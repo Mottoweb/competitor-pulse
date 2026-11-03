@@ -166,6 +166,7 @@ server/migrations/
 web/src/                   # CompetitorList, Timeline, typed api client
 shared/                    # API contract types used by server and web
 files/                     # provided, unchanged
+.github/workflows/ci.yml
 Dockerfile, docker-compose.yml, .env.example, .gitignore, README.md
 ```
 
@@ -203,7 +204,7 @@ Facts later steps need, and deviations from this plan, added as each step is app
 
 **Steps with no behaviour of their own:** step 1 has one failing smoke test of the test setup itself. Step 8 starts with a failing script that checks `docker compose up` brings the system to a healthy state and serves the API. Step 3 only adds a review document, generated from the running code, so it has no tests. Step 9 (README) has no tests; instead, its run instructions get followed from a clean checkout.
 
-1. **Scaffold:** npm workspaces (`server`, `web`, `shared`), NestJS project, strict TypeScript and ESLint config, Jest, `npm run verify`, compose with Postgres, `.gitignore`, and remove the committed `.DS_Store` files.
+1. **Scaffold:** npm workspaces (`server`, `web`, `shared`), NestJS project, strict TypeScript and ESLint config, Jest, `npm run verify`, compose with Postgres, `.gitignore`, the GitHub Actions CI workflow, and remove the committed `.DS_Store` files.
 2. **Postgres layer:** entities, generated migrations and all queries (claim due competitors, save snapshot with diff, claim and complete summaries, read timeline), with integration tests including concurrent claims.
 3. **Postgres review package:** a PR adding `docs/postgres-review.md` with the entities, the generated migration SQL, the SQL TypeORM actually runs, and `EXPLAIN` output for the claim and timeline queries. Nothing further gets built until you've approved it.
 4. **Polling:** source stub, poll worker, write retries.
@@ -220,6 +221,8 @@ Facts later steps need, and deviations from this plan, added as each step is app
    - AI tools used (Claude Code), as the brief asks.
 
 ## Verification
+
+**CI (GitHub Actions):** `.github/workflows/ci.yml` runs on every pull request, and again on each new push to it. Type checks, lint and tests are separate named steps, so a PR shows which one failed. It runs on a Postgres service container and starts the mock LLM instances, with no provider keys. A step can't be approved until CI is green.
 
 Automated tests never call a real provider, so they spend no money. Tables are truncated between tests, and retry times are set directly in the database, so tests don't sleep.
 

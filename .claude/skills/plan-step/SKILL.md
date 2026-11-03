@@ -110,7 +110,9 @@ This is the most important part of the hand-off. Include only what this step act
 
 Avoid generic items like "check code quality". If you verified something yourself, report it under Verification rather than handing it to the user.
 
-Then reply with the PR link, the checks and their results, and the checklist, and end with:
+Wait for CI with `gh pr checks <number> --watch`. If it fails, read the logs with `gh run view <run-id> --log-failed` and fix the cause with new commits, following the rule above about fixing code rather than tests. CI runs from step 1 onward, because step 1 creates the workflow. Don't hand over a PR with red CI; if you can't get it green, report that plainly and stop.
+
+Then reply with the PR link, the checks and their results, including CI, and the checklist, and end with:
 
 > Run `/plan-step approve` to merge and mark this step done, or `/plan-step changes <feedback>` to request changes.
 
@@ -121,7 +123,7 @@ Then stop. A casual "looks good" isn't approval; if the user says something like
 1. Switch to the PR branch and apply the feedback. New or changed behaviour gets a failing test first, as in "Write failing tests".
 2. If the feedback is a question, answer it and change nothing unless asked.
 3. Add new commits, without rewriting history, so the user can see what changed since their review.
-4. Run "Verify" again, update the PR body, and reply with what changed and an updated checklist. The step stays unapproved.
+4. Run "Verify" again, wait for CI to go green, update the PR body, and reply with what changed and an updated checklist. The step stays unapproved.
 
 ## Approve
 
@@ -133,7 +135,7 @@ Only this mode merges, and only when the user invoked it with `approve`.
    - Change `- [ ] Step <n>` to `- [x] Step <n>` in `## Status` and add the PR number.
    - Add any facts later steps need, plus any deviations, to `## Implementation log`.
    - If this step changed a later step, edit that step and mark it `(updated by step <n>)`.
-4. Commit this update, and push.
+4. Commit this update, push, and wait for CI with `gh pr checks <number> --watch`. If it's red, stop and report; don't merge.
 5. Merge with `gh pr merge <number> --merge --delete-branch`. Use a merge commit rather than a squash, so the test-first history stays visible.
 6. Update local `main` with `git switch main && git pull --ff-only`.
 7. Reply with the merged PR, and the next open step with what it will do. Don't start it until the user runs `/plan-step` again.
