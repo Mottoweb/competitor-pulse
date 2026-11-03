@@ -1,0 +1,21 @@
+{
+  "name": "competitor-pulse",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.12 <23"
+  },
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @competitor-pulse/shared",
+    "test": "npm test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  }
+}
