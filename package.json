@@ -19,6 +19,9 @@
     "test": "npm test --workspaces --if-present",
     "verify": "npm run build:shared && npm run typecheck && npm run lint && npm test"
   },
+  "overrides": {
+    "multer": "2.5.0"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
     "@types/node": "^22.0.0",
