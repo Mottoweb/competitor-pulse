@@ -9,7 +9,15 @@
     "sourceMap": true,
     "rootDir": ".",
     "outDir": "dist",
-    "types": ["node", "jest"]
+    "types": [
+      "node",
+      "jest"
+    ]
   },
-  "include": ["src", "jest.config.ts"]
+  "include": [
+    "src",
+    "migrations",
+    "jest.config.ts",
+    "jest.integration.config.ts"
+  ]
 }

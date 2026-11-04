@@ -78,7 +78,7 @@ Everything is TypeScript, including tests, migrations and config.
 - **Untrusted data:** env vars, request bodies, fixtures and LLM responses are parsed with `zod`, with types inferred from the schemas. `unknown` is narrowed, never cast.
 - **Database:** prefer typed repository methods. Query builder strings can't be compiler-checked, so integration tests cover them. Raw queries declare an explicit row type.
 - **Closed sets:** statuses and provider names are string-literal unions, with exhaustive `switch` checks.
-- **Check:** `npm run verify` runs type checks, lint and all tests.
+- **Check:** `npm run test:all` runs type checks, lint, unit tests and integration tests.
 
 ## Database layer rules
 
@@ -87,6 +87,7 @@ Everything is TypeScript, including tests, migrations and config.
 - **Claims:** a short transaction using `setLock('pessimistic_write')`, `setOnLocked('skip_locked')` and `limit`, then a batch `update` with `In(ids)`. It commits before any network call.
 - **Raw SQL:** allowed through `dataSource.query` where the query builder obscures a query, with an explicit row type.
 - **Query logging:** enabled in development, so the real SQL is available for review.
+- **Configuration:** the environment is the only source. All five `POSTGRES_*` variables are required everywhere, with no defaults in the code or in compose, and a missing one stops startup. Locally they come from the repo root's `.env` (`cp .env.example .env`); real variables override the file. Integration tests never read `.env`; they use the Testcontainers settings.
 
 ## Schema
 
@@ -94,7 +95,7 @@ Everything is TypeScript, including tests, migrations and config.
   - Index on `next_poll_at`.
 - `snapshots(id bigserial PK, competitor_id FK CASCADE, fetched_at, title, tagline, price, description, content_hash, changed, summary, summary_status, summary_attempts, summary_next_attempt_at, summary_error, summary_provider, summary_model)`
   - `summary_status` is one of `none | pending | done | failed`.
-  - Index on `(competitor_id, id DESC)` for the timeline and previous-snapshot lookup.
+  - Index on `(competitor_id, id)` for the timeline and previous-snapshot lookup, scanned backward for newest first.
   - Partial index on `summary_next_attempt_at WHERE summary_status = 'pending'`.
 - `source_cursors(competitor_id PK FK CASCADE, position)` for the stub's counter.
 
@@ -175,7 +176,7 @@ Dockerfile, docker-compose.yml, .env.example, .gitignore, README.md
 Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`.
 
 - [x] Step 1: Scaffold (PR #2)
-- [ ] Step 2: Postgres layer
+- [x] Step 2: Postgres layer (PR #3)
 - [ ] Step 3: Postgres review package
 - [ ] Step 4: Polling
 - [ ] Step 5: Summaries
@@ -192,15 +193,46 @@ Facts later steps need, and deviations from this plan, added as each step is app
 
 - **Nest 11, not 12:** Nest 12 is ESM-only, and Jest can only load it on Node 22 through `--experimental-vm-modules`. Stay on the 11-compatible lines: `@nestjs/typeorm` 11 and `@nestjs/serve-static` 5. `@nestjs/typeorm` 12 is ESM and breaks Jest. TypeORM 1.x worked with this pairing in a spike.
 - **TypeScript `~6.0.3`:** version 7 is outside the supported range of `typescript-eslint` and `ts-jest`.
-- **`shared` must be built first:** it compiles to CommonJS in `dist`, and consumers import that. `verify` and CI build it first. Run `npm run build:shared` after changing it.
+- **`shared` must be built first:** it compiles to CommonJS in `dist`, and consumers import that. `test:all` and CI build it first. Run `npm run build:shared` after changing it.
 - **Step 7:** `web` imports only types from `shared` so far. Importing a runtime value may need a Vite alias to `shared/src`, which hasn't been tested.
 - **Jest doesn't type-check:** `isolatedModules` makes `ts-jest` transpile only, so type errors in specs are caught by `npm run typecheck`.
-- **Port 3000 is hardcoded** in `server/src/main.ts`. Replace it when the `zod` config module arrives.
-- **Postgres:** compose uses host port 5432, overridable with `POSTGRES_PORT`. User, password and database are all `competitor_pulse`, locally and in CI.
-- **CI services:** Postgres on `localhost:5432`, and mock LLM instances on ports 4001 and 4002. No test uses them yet.
+- **Port 3000 is hardcoded** in `server/src/main.ts`. `server/src/config.ts` exists since step 2 but only covers the database. Replace the port when the API step adds its config.
+- **Postgres (updated by step 2):** compose and the migration CLI read `POSTGRES_*` from `.env`, with no defaults. `.env.example` uses port 5432, with user, password and database all `competitor_pulse`.
+- **CI services (updated by step 2):** mock LLM instances on ports 4001 and 4002, which no test uses yet. Integration tests start their own Postgres, so CI no longer has a Postgres service.
 - **`multer` override:** root `package.json` forces `multer` to 2.5.0 because `@nestjs/platform-express` 11.2.8 pins the vulnerable 2.4.0. Remove it once Nest updates the pin. Changing an override also needs the lockfile updated (`npm update multer`), because `npm install` alone left 2.4.0 in place.
 - **Step 8:** 32 low and moderate audit findings remain in dev tooling and are accepted. The Dockerfile's production image must omit dev dependencies.
 - **Merge gate:** GitHub doesn't enforce CI, because branch protection is unavailable on this private repo's plan. `/plan-step approve` is the only gate.
+
+**Step 2**
+
+Deviations:
+
+- **Timeline index:** `(competitor_id, id)` rather than `DESC`, because TypeORM's index decorators can't declare `DESC`. It relies on a backward scan, which step 3's `EXPLAIN` should confirm.
+- **Drift test:** calls the schema builder's `log()` directly, the same comparison `migration:generate --check` makes, rather than spawning the CLI.
+- **Build layout:** migrations sit outside `src`, so the compiled entry point is `dist/src/main.js` and migrations are in `dist/migrations`.
+- **Test commands:** `verify` became `test:all`, with `test:unit` (also `npm test`) and `test:integration`. Integration specs are named `*.integration.spec.ts` and use Testcontainers, so CI has no Postgres service.
+- **No configuration defaults:** see Database layer rules. Compose and the migration CLI need `.env`, so `cp .env.example .env` is a required setup step.
+- **Nest wiring deferred:** `@nestjs/typeorm` isn't installed and `AppModule` doesn't load the database. See step 4.
+
+Choices made during the step, which the user reviewed at approval:
+
+- `summary_status` is a Postgres enum built from the shared `SUMMARY_STATUSES`, not `text` with a `CHECK`.
+- Jitter is plus or minus the ratio, so the average stays at the interval. `claimDueCompetitors` takes `jitterRatio`; 0.1 is the plan's value.
+- Each integration spec file creates its own database inside the test container.
+
+Facts later steps need:
+
+- **Query classes:** `SnapshotQueries` (`server/src/poller/`) and `SummaryQueries` (`server/src/summarizer/`) are `@Injectable()` and take a `DataSource`. Nothing registers them yet.
+- **Step 4:** `saveSnapshot`'s `inTransaction` callback is where the cursor advance goes, so it commits with the snapshot. `saveSnapshot` returns `null` when the competitor was deleted. `server/src/source/listing.ts` is a plain interface for now; the source's `zod` schema should replace it.
+- **Step 5:** `claimPendingSummaries` takes `limit`, `retryAfterSeconds` and `maxAttempts`, and counts the attempt at claim time. `attempt` starts at 1 and selects the provider. A claim can return fewer rows than it locked, because rows already at the cap are marked `failed` there. Pass `attempt` back to `scheduleSummaryRetry` and `failSummary`, which ignore a superseded attempt and return `false`. `completeSummary` accepts a result from any attempt while the row is pending.
+- **Step 6:** `listTimeline` returns entities, so the API maps them to the shared contract. `Snapshot.id` is a string, because `bigint` can exceed 2^53.
+- **`.env` loading:** `data-source.ts` loads the repo root's `.env` for the CLI, using a path that is correct only when run from source. From `dist` it finds no file and relies on real variables, which is the intended production behaviour. Integration tests must never import `data-source.ts`.
+
+Known gaps, accepted at approval:
+
+- **Unexplained failure:** one early full test run had 2 failures, and the test names weren't captured. The next 32 full runs passed, on dev Postgres rather than Testcontainers. If it recurs, capture the names.
+- **Lock checks:** removing the lock from `saveSnapshot` makes its concurrency test fail, but the same check was never validly completed for the two claim queries.
+- **`.agents/`:** an untracked `.agents/skills/plan-step/SKILL.md` appeared during this step from outside the session. It isn't committed and still says `npm run verify`.
 
 ## Implementation steps
 
@@ -211,23 +243,23 @@ Facts later steps need, and deviations from this plan, added as each step is app
 1. **Write the tests first,** from the brief and this plan.
 2. **Run them and confirm they fail.** They must fail on an assertion because the behaviour is missing, not because of a typo or setup error. Only the type signatures and empty stubs needed to compile may exist at this point.
 3. **Implement** until the tests pass.
-4. **Run `npm run verify`** before moving on.
+4. **Run `npm run test:all`** before moving on.
 5. **Report both runs,** failing and passing, for each step.
 
 **When a test fails after implementation, fix the code, not the test.** Tests are never weakened, skipped, deleted or edited just to pass. If a test itself looks wrong against the brief, stop and show you why, and change it only with your agreement.
 
 **Steps with no behaviour of their own:** step 1 has one failing smoke test of the test setup itself. Step 8 starts with a failing script that checks `docker compose up` brings the system to a healthy state and serves the API. Step 3 only adds a review document, generated from the running code, so it has no tests. Step 9 (README) has no tests; instead, its run instructions get followed from a clean checkout.
 
-1. **Scaffold:** npm workspaces (`server`, `web`, `shared`), NestJS project, strict TypeScript and ESLint config, Jest, `npm run verify`, compose with Postgres, `.gitignore`, the GitHub Actions CI workflow, and remove the committed `.DS_Store` files.
+1. **Scaffold:** npm workspaces (`server`, `web`, `shared`), NestJS project, strict TypeScript and ESLint config, Jest, `npm run test:all`, compose with Postgres, `.gitignore`, the GitHub Actions CI workflow, and remove the committed `.DS_Store` files.
 2. **Postgres layer:** entities, generated migrations and all queries (claim due competitors, save snapshot with diff, claim and complete summaries, read timeline), with integration tests including concurrent claims.
-3. **Postgres review package:** a PR adding `docs/postgres-review.md` with the entities, the generated migration SQL, the SQL TypeORM actually runs, and `EXPLAIN` output for the claim and timeline queries. Nothing further gets built until you've approved it.
-4. **Polling:** source stub, poll worker, write retries.
+3. **Postgres review package:** a PR adding `docs/postgres-review.md` with the entities, the generated migration SQL, the SQL TypeORM actually runs, and `EXPLAIN` output for the claim and timeline queries, including whether the timeline uses a backward scan of `(competitor_id, id)`. Generating it needs `.env` and dev Postgres. Nothing further gets built until you've approved it. (updated by step 2)
+4. **Polling:** source stub, poll worker, write retries. Also wires the database into Nest: install `@nestjs/typeorm` 11, register the query classes, and load `.env` in `main.ts`. `app.module.spec.ts` is a unit test that boots `AppModule` with no services, so importing the database there means deciding how that test changes, with your agreement. (updated by step 2)
 5. **Summaries:** LLM providers, failover, summary worker.
 6. **API:** competitor and snapshot endpoints, `/healthz`.
 7. **Frontend:** both views, served by NestJS (`@nestjs/serve-static`) with a Vite proxy in development.
-8. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies.
+8. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies. The production image has no dev dependencies, so the migrate service must run the compiled `dist/migrations` without `ts-node`, using a compiled data source. Compose needs `.env`, so `docker compose up` from a clean checkout needs `cp .env.example .env` first. (updated by step 2)
 9. **README:**
-   - Install, build and run, with and without compose.
+   - Install, build and run, with and without compose, including `cp .env.example .env` as a required first step.
    - The system overview above.
    - LLM setup, including running against the mock; config table.
    - Assumptions, scale and production notes, including the Postgres standby.
@@ -236,11 +268,21 @@ Facts later steps need, and deviations from this plan, added as each step is app
 
 ## Verification
 
-**CI (GitHub Actions):** `.github/workflows/ci.yml` runs on every pull request, and again on each new push to it. Type checks, lint and tests are separate named steps, so a PR shows which one failed. It runs on a Postgres service container and starts the mock LLM instances, with no provider keys. A step can't be approved until CI is green.
+**CI (GitHub Actions):** `.github/workflows/ci.yml` runs on every pull request, and again on each new push to it. Type checks, lint, unit tests and integration tests are separate named steps, so a PR shows which one failed. It starts the mock LLM instances, with no provider keys. A step can't be approved until CI is green.
+
+**Test commands:**
+
+| Command | Runs | Needs |
+|---|---|---|
+| `npm run test:unit` (also `npm test`) | `*.spec.ts` | Nothing |
+| `npm run test:integration` | `*.integration.spec.ts` | Docker |
+| `npm run test:all` | Build `shared`, types, lint, unit tests, integration tests | Docker |
+
+Integration tests start a throwaway `postgres:16` on a random port with Testcontainers, so they don't need or touch dev Postgres. Each spec file creates its own database in that container, so spec files can run in parallel.
 
 Automated tests never call a real provider, so they spend no money. Tables are truncated between tests, and retry times are set directly in the database, so tests don't sleep.
 
-**Unit tests (Jest, no services):**
+**Unit tests (`test:unit`; Jest, no services):**
 
 - Hash normalisation: whitespace-only differences match, and a real change in any field doesn't.
 - Provider order from env, including skipped keys and cycling by attempt number.
@@ -248,12 +290,12 @@ Automated tests never call a real provider, so they spend no money. Tables are t
 - Prompt building: changed fields come first, and long fields are capped.
 - Config parsing rejects invalid values and refuses to start with no provider.
 
-**Migration tests:**
+**Migration tests (`test:integration`):**
 
 - All migrations apply to an empty database, and `down` rolls them back.
 - `migration:generate --check` reports no drift between entities and migrations.
 
-**API tests (Jest, Supertest, real Postgres):**
+**API tests (`test:integration`; Jest, Supertest, real Postgres):**
 
 - Response shape checked against the shared contract, including `summary` being `null` when unchanged, pending or failed.
 - Each row of the API behaviour table.
@@ -264,7 +306,7 @@ Automated tests never call a real provider, so they spend no money. Tables are t
 - The timeline shows each of the four summary states, newest first.
 - Adding and removing a competitor, and showing API errors.
 
-**Integration tests (Jest, real Postgres, mock LLM), calling the worker check functions directly:**
+**Worker integration tests (`test:integration`; Jest, real Postgres, mock LLM), calling the worker check functions directly:**
 
 - Stub advances through v1 to v4, then repeats v4.
 - The first snapshot and unchanged polls make no LLM call (`callCount` stays flat); each change makes exactly one.
@@ -279,7 +321,7 @@ Automated tests never call a real provider, so they spend no money. Tables are t
 
 End to end:
 
-1. Run `docker compose up` from a clean checkout.
+1. Run `cp .env.example .env`, then `docker compose up`, from a clean checkout.
 2. Add all three competitors and watch the timelines fill with real DeepSeek summaries (only once you've provided a key; a full run is about 9 billed calls).
 3. Restart the app container and confirm no false change appears.
 4. Stop Postgres briefly and confirm the app recovers.

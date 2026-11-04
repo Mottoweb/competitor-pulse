@@ -7,24 +7,9 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  test-all:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: competitor_pulse
-          POSTGRES_PASSWORD: competitor_pulse
-          POSTGRES_DB: competitor_pulse
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U competitor_pulse"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
 
     steps:
       - uses: actions/checkout@v7
@@ -53,5 +38,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Tests
-        run: npm test
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Integration tests
+        run: npm run test:integration

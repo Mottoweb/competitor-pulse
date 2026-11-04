@@ -61,7 +61,7 @@ gh pr list --state open --json number,title,headRefName,url --jq '[.[] | select(
 Run all of these and keep the real output. Don't use `--no-verify`, and don't suppress type or lint errors to get a pass.
 
 ```bash
-npm run verify                                     # types, lint, all tests
+npm run test:all                                   # types, lint, unit and integration tests
 git diff --stat <test-commit>..HEAD -- '*.spec.*' '*.test.*'   # must be empty, or each change explained
 ```
 
@@ -130,7 +130,7 @@ Then stop. A casual "looks good" isn't approval; if the user says something like
 Only this mode merges, and only when the user invoked it with `approve`.
 
 1. Switch to the PR branch. Confirm the PR is open and mergeable, and stop if it isn't.
-2. Run `npm run verify` again. If it fails, stop and report; don't merge.
+2. Run `npm run test:all` again. If it fails, stop and report; don't merge.
 3. Update `docs/PLAN.md` on the branch:
    - Change `- [ ] Step <n>` to `- [x] Step <n>` in `## Status` and add the PR number.
    - Add any facts later steps need, plus any deviations, to `## Implementation log`.
