@@ -32,7 +32,7 @@ Compose always runs the mock and sets its key, so a real provider can fall back 
 ### Which real providers were tested
 
 - **DeepSeek:** run with a real key and confirmed by the developer.
-- **OpenAI, Anthropic, Gemini, Mistral, Groq and xAI:** never called. Their code paths ran only against the mock server. The default model names may be out of date, and each can be overridden with `<PROVIDER>_MODEL`.
+- **OpenAI, Anthropic, Gemini, Mistral, Groq and xAI:** never called. Their code ran only against local stand-in servers. The default model names may be out of date, and each can be overridden with `<PROVIDER>_MODEL`.
 
 Automated tests never call a real provider.
 
