@@ -244,4 +244,4 @@ The brief's scale, a few hundred competitors polled every 15 minutes, is about 0
 
 ## AI tools used
 
-The system was built with Claude Code, which wrote the code, tests and documentation. Each step went through a pull request that the developer reviewed and approved. `docs/PLAN.md` records the decisions and the implementation log.
+The system was built with Claude Code. The design was discussed thoroughly first and written up as a plan, `docs/PLAN.md`, which also holds the implementation log. Each plan step was then carried out with a human in the loop, who reviewed and adjusted the work before it was merged.
