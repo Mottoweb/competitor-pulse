@@ -44,7 +44,7 @@ describe('CompetitorList', () => {
   });
 
   it('asks before removing, naming the competitor, and keeps it if cancelled', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const calls = stubFetch({
       'GET /api/competitors': { status: 200, body: [{ id: 'acme-crm' }] },
     });
@@ -53,7 +53,7 @@ describe('CompetitorList', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
 
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('acme-crm'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('acme-crm'));
     expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
     expect(screen.getByRole('link', { name: 'acme-crm' })).toBeInTheDocument();
   });

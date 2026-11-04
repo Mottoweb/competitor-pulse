@@ -20,6 +20,8 @@ export function buildDataSourceOptions(
     // that holds migrations/.
     migrations: [join(__dirname, '../../migrations/*.{ts,js}')],
     synchronize: false,
+    // Without this a host that never answers leaves callers waiting indefinitely.
+    connectTimeoutMS: 5_000,
     logging: config.logQueries,
   };
 }

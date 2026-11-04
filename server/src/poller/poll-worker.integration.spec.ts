@@ -320,7 +320,9 @@ describe('PollWorker', () => {
           const fetched = await source.fetchListing(id);
           await dataSource.query(`DELETE FROM competitors WHERE id = $1`, [id]);
           await dataSource.query(
-            `INSERT INTO competitors (id, created_at) VALUES ($1, now() + interval '1 minute')`,
+            // Not due, or this worker would claim it again and re-add it forever.
+            `INSERT INTO competitors (id, created_at, next_poll_at)
+             VALUES ($1, now() + interval '1 minute', now() + interval '1 hour')`,
             [id],
           );
           return fetched;

@@ -13,6 +13,7 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiInternalServerErrorResponse,
+  ApiServiceUnavailableResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -39,6 +40,7 @@ import { ZodValidationPipe } from './zod-validation.pipe';
 
 @ApiTags('competitors')
 @ApiInternalServerErrorResponse({ type: ApiErrorDto })
+@ApiServiceUnavailableResponse({ type: ApiErrorDto })
 @Controller('api/competitors')
 export class CompetitorsController {
   constructor(private readonly competitors: CompetitorsService) {}

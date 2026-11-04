@@ -109,7 +109,9 @@ export function CompetitorList(): ReactElement {
                   size="sm"
                   disabled={busy}
                   onClick={() => {
-                    void change(() => removeCompetitor(id));
+                    if (window.confirm(`Remove ${id} and delete its history?`)) {
+                      void change(() => removeCompetitor(id));
+                    }
                   }}
                 >
                   Remove

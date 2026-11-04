@@ -12,7 +12,11 @@ import {
   type ListingSource,
 } from '../source/listing-source';
 import { POLLER_CONFIG, type PollerConfig } from './poller-config';
-import { SnapshotQueries, type SavedSnapshot } from './snapshot-queries';
+import {
+  SnapshotQueries,
+  type ClaimedCompetitor,
+  type SavedSnapshot,
+} from './snapshot-queries';
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -72,15 +76,15 @@ export class PollWorker
     try {
       // Sequential on purpose: each batch waits for the last, which caps concurrency.
       while (!this.stopping) {
-        const ids = await this.queries.claimDueCompetitors({
+        const claimed = await this.queries.claimDueCompetitors({
           limit: this.config.concurrency,
           intervalSeconds: this.config.pollIntervalSeconds,
           jitterRatio: this.config.jitterRatio,
         });
-        if (ids.length === 0) {
+        if (claimed.length === 0) {
           return;
         }
-        await Promise.all(ids.map((id) => this.poll(id)));
+        await Promise.all(claimed.map((competitor) => this.poll(competitor)));
       }
     } catch (error) {
       this.logger.error(`Poll check failed: ${messageOf(error)}`);
@@ -88,31 +92,33 @@ export class PollWorker
   }
 
   /** A failure writes nothing. The competitor is polled again when next due. */
-  private async poll(competitorId: string): Promise<void> {
+  private async poll(competitor: ClaimedCompetitor): Promise<void> {
     try {
-      const fetched = await this.source.fetchListing(competitorId);
-      await this.saveWithRetry(competitorId, fetched, new Date());
+      const fetched = await this.source.fetchListing(competitor.id);
+      await this.saveWithRetry(competitor, fetched, new Date());
     } catch (error) {
-      this.logger.error(`Poll of ${competitorId} failed: ${messageOf(error)}`);
+      this.logger.error(`Poll of ${competitor.id} failed: ${messageOf(error)}`);
     }
   }
 
   /** Reuses the listing already fetched, so a retry doesn't fetch it again. */
   private async saveWithRetry(
-    competitorId: string,
+    competitor: ClaimedCompetitor,
     fetched: FetchedListing,
     fetchedAt: Date,
   ): Promise<void> {
+    const competitorId = competitor.id;
     for (let attempt = 0; ; attempt += 1) {
       try {
         const saved = await this.queries.saveSnapshot({
           competitorId,
           listing: fetched.listing,
           fetchedAt,
+          claimedCreatedAt: competitor.createdAt,
           inTransaction: (tx) => fetched.markSaved(tx),
         });
         if (saved === null) {
-          this.logger.log(`${competitorId} was deleted during its poll`);
+          this.logger.log(`${competitorId} was deleted or re-added during its poll`);
           return;
         }
         this.logger.log(`${competitorId}: ${describeSave(saved)}`);

@@ -29,10 +29,10 @@ describe('OpenAPI spec', () => {
   });
 
   it.each<['get' | 'post' | 'delete', string, string[]]>([
-    ['get', '/api/competitors', ['200', '500']],
-    ['post', '/api/competitors', ['201', '400', '409', '422', '500']],
-    ['delete', '/api/competitors/{id}', ['204', '404', '500']],
-    ['get', '/api/competitors/{id}/snapshots', ['200', '400', '404', '500']],
+    ['get', '/api/competitors', ['200', '500', '503']],
+    ['post', '/api/competitors', ['201', '400', '409', '422', '500', '503']],
+    ['delete', '/api/competitors/{id}', ['204', '404', '500', '503']],
+    ['get', '/api/competitors/{id}/snapshots', ['200', '400', '404', '500', '503']],
     ['get', '/healthz', ['200', '503']],
   ])('declares the responses of %s %s', (method, path, statuses) => {
     const operation = readCommittedSpec().paths[path]?.[method];
