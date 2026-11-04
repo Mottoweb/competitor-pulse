@@ -188,7 +188,7 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 - [x] Step 6: API (PR #7)
 - [x] Step 7: Frontend (PR #8)
 - [x] Step 8: Swagger and generated client (PR #9)
-- [ ] Step 9: shadcn/ui
+- [x] Step 9: shadcn/ui (PR #10)
 - [ ] Step 10: Packaging
 - [ ] Step 11: README
 - [ ] Step 12: Study doc
@@ -386,6 +386,33 @@ Known gaps, accepted at approval:
 - **500 responses** are declared in the spec, but no test checks a real one. The 503 check uses a fake `DataSource`.
 - **Vite dev proxy:** not run in this step. Its config is unchanged apart from removing the alias.
 - **CI at merge:** CI passed on the final code (`9d4e8f8`). The merge didn't wait for the runs on the commits after it, which only change this file.
+
+**Step 9**
+
+Deviations:
+
+- **`shadcn init` not used:** it hadn't finished after 4 minutes, so `web/components.json`, the `@/` path alias and the theme variables in `web/src/styles.css` were written by hand, and `shadcn add` generated the components. `add` left out `class-variance-authority`, which was installed separately.
+- **No failing run or tests commit:** as the plan says, the existing web tests are the check. No spec file changed.
+
+Choices made during the step, which the user reviewed at approval:
+
+- Light theme only. `dark:` classes depend on a `.dark` class that nothing sets, so an operating system dark theme has no effect.
+- `cn` (0.5.2, from the shadcn-ui organisation, no install scripts) as generated, rather than a local `lib/utils.ts`.
+- Muted text and the input border are darker than shadcn's defaults: about 6.3:1 and 3.1:1, calculated from the colour values.
+- An "AI summary" label above each summary.
+
+Facts later steps need:
+
+- **Step 10:** building the web app needs its dev dependencies, including `tailwindcss` and `@tailwindcss/vite`, so build it in a stage that has them. The production image only needs `web/dist`.
+- **Step 11:** the stack gains Tailwind 4 and shadcn/ui. Components live in `web/src/components/ui/` and are generated source in the repo; add more with `npx shadcn@latest add <name>` from `web`. Close stdin or expect prompts.
+- **Step 12:** shadcn's copied components, and what stays in versioned packages (`radix-ui`, `class-variance-authority`, `cn`).
+- **Checked by hand:** the built app ran against a throwaway Postgres and the mock in headless Chromium, using cached build 1243, before the last commit changed the input border colour. It covered the 400, 422 and 409 messages, add and remove, a timeline filling in, a deep-link reload and no overflow at 375px.
+
+Known gaps, accepted at approval:
+
+- **Summary badges:** the pending and failed badges weren't seen in a browser. The web tests cover their text, not their appearance.
+- **Vite dev server:** not confirmed with the Tailwind plugin; only `vite build` and Vitest ran it.
+- **Failed `DELETE` report from step 8:** it didn't appear in this step's run, and the cause is still unknown.
 
 ## Implementation steps
 
