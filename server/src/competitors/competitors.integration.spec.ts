@@ -458,4 +458,26 @@ describe('competitors API', () => {
       expect(response.body).toEqual({ status: 'ok' });
     });
   });
+
+  describe('logging', () => {
+    it('logs adding and removing a competitor, but not a rejected add', async () => {
+      const log = jest.spyOn(Logger.prototype, 'log');
+
+      await request(baseUrl)
+        .post('/api/competitors')
+        .send({ id: 'does-not-exist' })
+        .expect(422);
+      expect(log).not.toHaveBeenCalledWith('Now tracking does-not-exist');
+
+      await request(baseUrl)
+        .post('/api/competitors')
+        .send({ id: 'acme-crm' })
+        .expect(201);
+      await request(baseUrl).delete('/api/competitors/acme-crm').expect(204);
+
+      expect(log).toHaveBeenCalledWith('Now tracking acme-crm');
+      expect(log).toHaveBeenCalledWith('Stopped tracking acme-crm');
+      log.mockRestore();
+    });
+  });
 });

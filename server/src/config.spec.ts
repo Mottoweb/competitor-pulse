@@ -86,15 +86,28 @@ describe('parseDatabaseConfig', () => {
     expect(() => parseDatabaseConfig(env)).not.toThrow(/top-secret/);
   });
 
+  it.each([undefined, 'development', 'test', 'production'])(
+    'with NODE_ENV=%s query logging stays off by default',
+    (nodeEnv) => {
+      expect(
+        parseDatabaseConfig({ ...COMPLETE_ENV, NODE_ENV: nodeEnv }).logQueries,
+      ).toBe(false);
+    },
+  );
+
   it.each([
-    ['development', true],
-    [undefined, true],
-    ['test', false],
-    ['production', false],
-  ])('with NODE_ENV=%s query logging is %s', (nodeEnv, logQueries) => {
+    ['true', true],
+    ['false', false],
+  ])('with LOG_SQL=%s query logging is %s', (value, logQueries) => {
     expect(
-      parseDatabaseConfig({ ...COMPLETE_ENV, NODE_ENV: nodeEnv }).logQueries,
+      parseDatabaseConfig({ ...COMPLETE_ENV, LOG_SQL: value }).logQueries,
     ).toBe(logQueries);
+  });
+
+  it('refuses an invalid LOG_SQL', () => {
+    expect(() =>
+      parseDatabaseConfig({ ...COMPLETE_ENV, LOG_SQL: 'yes' }),
+    ).toThrow(/LOG_SQL/);
   });
 });
 

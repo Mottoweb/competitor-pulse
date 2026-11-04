@@ -489,4 +489,53 @@ describe('SummaryWorker', () => {
       expect(await dataSource.manager.count(Snapshot)).toBe(0);
     });
   });
+
+  describe('logging', () => {
+    it('logs a saved summary with its competitor, provider and attempt', async () => {
+      const log = jest.spyOn(Logger.prototype, 'log');
+      await addPending('acme');
+
+      await realWorker().check();
+
+      const row = await onlyChanged();
+      expect(row.summaryStatus).toBe('done');
+      expect(log).toHaveBeenCalledWith(
+        `acme: summary saved by ${row.summaryProvider} (${row.summaryModel}) on attempt 1`,
+      );
+    });
+
+    it('logs when a failed summary will retry', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn');
+      await addPending('acme');
+
+      await fakeWorker({
+        complete: jest.fn().mockRejectedValue(apiError(500)),
+      }).check();
+
+      expect(warn).toHaveBeenCalledWith('acme: summary retries in 5s');
+    });
+
+    it('logs when a summary gives up', async () => {
+      const error = jest.spyOn(Logger.prototype, 'error');
+      await addPending('acme');
+
+      await fakeWorker({
+        complete: jest.fn().mockRejectedValue(apiError(400)),
+      }).check();
+
+      expect(error).toHaveBeenCalledWith(
+        expect.stringContaining('acme: summary gave up after attempt 1'),
+      );
+    });
+
+    it('logs its schedule at startup', async () => {
+      const log = jest.spyOn(Logger.prototype, 'log');
+      const worker = realWorker();
+
+      worker.onApplicationBootstrap();
+      await worker.beforeApplicationShutdown();
+
+      expect(log).toHaveBeenCalledWith('Checking for pending summaries every 15s');
+    });
+  });
 });
