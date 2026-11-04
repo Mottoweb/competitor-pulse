@@ -7,6 +7,8 @@ const NETWORK_CODES = new Set([
   'EAI_AGAIN',
   'ETIMEDOUT',
   'EPIPE',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
 ]);
 
 // SQLSTATE: connection failures, the server shutting down or starting up, and
@@ -18,6 +20,8 @@ const POSTGRES_CONNECTION_CLASS = '08';
 const POOL_MESSAGES = [
   'Connection terminated',
   'timeout exceeded when trying to connect',
+  'Query read timeout',
+  'Client has encountered a connection error',
 ];
 
 function codeOf(error: Error): string | undefined {

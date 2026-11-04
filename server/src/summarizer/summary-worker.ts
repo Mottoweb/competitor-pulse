@@ -15,7 +15,11 @@ import type { LlmProvider } from '../llm/llm-config';
 import { ProviderFailover } from '../llm/provider-failover';
 import { SUMMARIZER_CONFIG, type SummarizerConfig } from './summarizer-config';
 import { buildSummaryPrompt } from './summary-prompt';
-import { SummaryQueries, type ClaimedSummary } from './summary-queries';
+import {
+  SummaryQueries,
+  type ClaimedSummary,
+  type CompleteSummaryInput,
+} from './summary-queries';
 
 const MAX_ERROR_LENGTH = 500;
 
@@ -96,7 +100,7 @@ export class SummaryWorker
       if (summary === null) {
         return;
       }
-      const saved = await this.queries.completeSummary({
+      const saved = await this.saveWithRetry({
         snapshotId: claim.snapshotId,
         summary,
         provider: provider.name,
@@ -113,6 +117,24 @@ export class SummaryWorker
       this.logger.error(
         `Saving summary ${claim.snapshotId} failed: ${messageOf(error)}`,
       );
+    }
+  }
+
+  /** The call is already paid for, so a brief database error shouldn't waste it. */
+  private async saveWithRetry(input: CompleteSummaryInput): Promise<boolean> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.queries.completeSummary(input);
+      } catch (error) {
+        const delayMs = this.config.saveRetryDelaysMs[attempt];
+        if (delayMs === undefined) {
+          throw error;
+        }
+        this.logger.warn(
+          `Saving summary ${input.snapshotId} failed, retrying: ${messageOf(error)}`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
     }
   }
 
@@ -151,7 +173,7 @@ export class SummaryWorker
     }
 
     const retryAfterSeconds = this.retryDelay(kind, claim.attempt);
-    if (retryAfterSeconds === null || claim.attempt >= this.config.maxAttempts) {
+    if (claim.attempt >= this.config.maxAttempts) {
       await this.queries.failSummary({
         snapshotId: claim.snapshotId,
         attempt: claim.attempt,
@@ -173,8 +195,7 @@ export class SummaryWorker
     });
   }
 
-  /** Null means another try can't help, because the request itself is at fault. */
-  private retryDelay(kind: FailureKind, attempt: number): number | null {
+  private retryDelay(kind: FailureKind, attempt: number): number {
     switch (kind) {
       case 'transient':
         return backoffSeconds(
@@ -183,10 +204,11 @@ export class SummaryWorker
           this.config.backoffMaxSeconds,
         );
       case 'provider_unusable':
-        // Waiting won't fix a bad key, so the next provider can go straight away.
-        return 0;
       case 'bad_request':
-        return null;
+        // Waiting won't fix a bad key or a rejected request, so the next provider
+        // can go straight away. One provider's 400 can be its own fault, such as a
+        // mistyped model, and the attempt cap still bounds the calls.
+        return 0;
     }
   }
 }

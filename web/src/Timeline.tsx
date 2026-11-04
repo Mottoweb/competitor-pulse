@@ -11,10 +11,20 @@ const REFETCH_MS = 5000;
 // on a page that refetches every 5s.
 const PAGE_SIZE = 100;
 
-function SummaryLine({ snapshot }: { snapshot: Snapshot }): ReactElement {
+function SummaryLine({
+  snapshot,
+  isFirst,
+}: {
+  snapshot: Snapshot;
+  isFirst: boolean;
+}): ReactElement {
   switch (snapshot.summaryStatus) {
     case 'none':
-      return <p className="text-sm text-muted-foreground">No change since previous snapshot</p>;
+      return (
+        <p className="text-sm text-muted-foreground">
+          {isFirst ? 'First snapshot' : 'No change since previous snapshot'}
+        </p>
+      );
     case 'pending':
       return <Badge variant="secondary">Summary pending…</Badge>;
     case 'failed':
@@ -87,7 +97,7 @@ function CompetitorTimeline({ id }: { id: string }): ReactElement {
       {snapshots?.length === 0 && <p className="text-sm text-muted-foreground">No snapshots yet.</p>}
       {snapshots !== null && snapshots.length > 0 && (
         <ul className="flex flex-col gap-4">
-          {snapshots.map((snapshot) => (
+          {snapshots.map((snapshot, index) => (
             <li key={snapshot.fetchedAt}>
               <Card className="items-start gap-3 p-4">
                 <time dateTime={snapshot.fetchedAt} className="text-xs text-muted-foreground">
@@ -100,7 +110,11 @@ function CompetitorTimeline({ id }: { id: string }): ReactElement {
                   <div className="text-sm">{snapshot.description}</div>
                 </div>
                 <div className="w-full">
-                  <SummaryLine snapshot={snapshot} />
+                  <SummaryLine
+                    snapshot={snapshot}
+                    // Below the limit, the oldest row loaded is the oldest there is.
+                    isFirst={index === snapshots.length - 1 && snapshots.length < limit}
+                  />
                 </div>
               </Card>
             </li>

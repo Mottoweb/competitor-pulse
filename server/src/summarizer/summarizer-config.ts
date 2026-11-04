@@ -9,6 +9,8 @@ export interface SummarizerConfig {
   backoffBaseSeconds: number;
   backoffMaxSeconds: number;
   maxAttempts: number;
+  /** The wait before each retry of saving a summary that is already paid for. */
+  saveRetryDelaysMs: number[];
 }
 
 export const SUMMARIZER_CONFIG = Symbol('SUMMARIZER_CONFIG');
@@ -33,5 +35,6 @@ export function parseSummarizerConfig(
     backoffBaseSeconds: 5,
     backoffMaxSeconds: 60,
     maxAttempts,
+    saveRetryDelaysMs: [100, 500],
   };
 }

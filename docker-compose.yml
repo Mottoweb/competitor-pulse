@@ -18,7 +18,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env, see .env.example}
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env, see .env.example}
     ports:
-      - '${POSTGRES_PORT:?Set POSTGRES_PORT in .env, see .env.example}:5432'
+      # Localhost only, because .env.example has a well-known password.
+      - '127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env, see .env.example}:5432'
     # Docker's default 64 MB /dev/shm made a parallel VACUUM fail.
     shm_size: 256mb
     volumes:
@@ -73,7 +74,6 @@ services:
       WEB_DIST_DIR: /app/web/dist
       POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-30}
       CHECK_INTERVAL_SECONDS: ${CHECK_INTERVAL_SECONDS:-5}
-      MOCK_API_KEY: mock
       MOCK_BASE_URL: http://mock-llm:4001/v1
     ports:
       - '${PORT:-3000}:3000'
@@ -87,7 +87,7 @@ services:
     # Longer than the 30s LLM timeout, so a stop can finish calls in progress.
     stop_grace_period: 40s
     healthcheck:
-      # Sets its own timeout, because /healthz has none.
+      # Its own limit, so a stuck request can't outlast the check.
       test:
         - CMD
         - node

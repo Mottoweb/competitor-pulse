@@ -153,11 +153,14 @@ describe('competitors API', () => {
     });
 
     it('returns 503 with a message, and does not leak the error', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn');
       jest
         .spyOn(app.get(CompetitorsService, { strict: false }), 'list')
         .mockRejectedValueOnce(connectionRefused());
 
       const response = await request(baseUrl).get('/api/competitors').expect(503);
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('ECONNREFUSED'));
 
       expect(response.text).not.toContain('ECONNREFUSED');
       expect(response.body).toEqual({

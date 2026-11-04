@@ -27,6 +27,7 @@ const CONFIG: SummarizerConfig = {
   backoffBaseSeconds: 5,
   backoffMaxSeconds: 60,
   maxAttempts: 3,
+  saveRetryDelaysMs: [0, 0],
 };
 
 function version(price: string): Listing {
@@ -271,19 +272,53 @@ describe('SummaryWorker', () => {
       expect(row.summaryProvider).toBe('openai');
     });
 
-    it('fails straight away on a 400, because the request is at fault', async () => {
+    it('moves to the next provider after a 400, because only one may be at fault', async () => {
+      await addPending('acme');
+      const complete = jest
+        .fn<Promise<string>, []>()
+        .mockRejectedValueOnce(apiError(400))
+        .mockResolvedValue('A summary');
+
+      const worker = fakeWorker({ complete });
+      await worker.check();
+      await worker.check();
+
+      expect(complete).toHaveBeenCalledTimes(2);
+      const row = await onlyChanged();
+      expect(row.summaryStatus).toBe('done');
+      expect(row.summaryAttempts).toBe(2);
+    });
+
+    it('ends as failed when a 400 repeats until attempts run out', async () => {
       await addPending('acme');
       const complete = jest
         .fn<Promise<string>, []>()
         .mockRejectedValue(apiError(400));
 
+      const worker = fakeWorker({ complete });
+      await worker.check();
+      await worker.check();
+      await worker.check();
+
+      expect(complete).toHaveBeenCalledTimes(CONFIG.maxAttempts);
+      const row = await onlyChanged();
+      expect(row.summaryStatus).toBe('failed');
+      expect(row.summaryError).toContain('HTTP 400');
+    });
+
+    it('retries saving a summary, so a brief database error wastes no paid call', async () => {
+      await addPending('acme');
+      const complete = jest.fn<Promise<string>, []>().mockResolvedValue('A summary');
+      jest
+        .spyOn(queries, 'completeSummary')
+        .mockRejectedValueOnce(new Error('connection lost'));
+
       await fakeWorker({ complete }).check();
 
       expect(complete).toHaveBeenCalledTimes(1);
       const row = await onlyChanged();
-      expect(row.summaryStatus).toBe('failed');
+      expect(row.summaryStatus).toBe('done');
       expect(row.summaryAttempts).toBe(1);
-      expect(row.summaryError).toContain('HTTP 400');
     });
 
     it('ends as failed once attempts run out, with the snapshot intact', async () => {
@@ -459,8 +494,11 @@ describe('SummaryWorker', () => {
     it('survives a failed save, and the row comes back after its retry time', async () => {
       await addPending('acme');
       const worker = realWorker();
+      // The first try and both of its retries.
       jest
         .spyOn(queries, 'completeSummary')
+        .mockRejectedValueOnce(new Error('connection lost'))
+        .mockRejectedValueOnce(new Error('connection lost'))
         .mockRejectedValueOnce(new Error('connection lost'));
 
       await expect(worker.check()).resolves.toBeUndefined();
@@ -518,13 +556,16 @@ describe('SummaryWorker', () => {
     it('logs when a summary gives up', async () => {
       const error = jest.spyOn(Logger.prototype, 'error');
       await addPending('acme');
+      await dataSource.query(
+        `UPDATE snapshots SET summary_attempts = 2 WHERE summary_status = 'pending'`,
+      );
 
       await fakeWorker({
         complete: jest.fn().mockRejectedValue(apiError(400)),
       }).check();
 
       expect(error).toHaveBeenCalledWith(
-        expect.stringContaining('acme: summary gave up after attempt 1'),
+        expect.stringContaining('acme: summary gave up after attempt 3'),
       );
     });
 

@@ -27,7 +27,7 @@ DeepSeek is the primary provider, and other providers take over when a call fail
 
 A provider is available only if its key is set. The default order is DeepSeek, OpenAI, Anthropic, Gemini, Mistral, Groq, xAI, mock, and `LLM_PROVIDER_ORDER` changes it. The app logs the order at startup and refuses to start with no provider.
 
-Compose always runs the mock and sets its key, so a real provider can fall back to it, and those summaries are labelled `mock`. To leave it out, set `LLM_PROVIDER_ORDER=deepseek`. Outside compose, remove `MOCK_API_KEY` from `.env`.
+If you add a real key, remove `MOCK_API_KEY` from `.env`. While it's set the mock stays on as the last fallback, and a real provider's failure can store its echo text as a finished summary. Compose always runs the mock's container, but the app only uses it while that key is set.
 
 ### Which real providers were tested
 
@@ -130,7 +130,7 @@ Settings come from the environment, and locally from the repo root's `.env`. Rea
 | Variable | Default | Required | What it does |
 |---|---|---|---|
 | `POSTGRES_HOST` | none | Yes | Database host. Compose sets `db` for the app |
-| `POSTGRES_PORT` | none | Yes | Database port. Under compose it's the port published on the host; the app always uses 5432 inside the network |
+| `POSTGRES_PORT` | none | Yes | Database port. Under compose it's the port published on the host's localhost; the app always uses 5432 inside the network |
 | `POSTGRES_USER` | none | Yes | Database user |
 | `POSTGRES_PASSWORD` | none | Yes | Database password |
 | `POSTGRES_DB` | none | Yes | Database name |
@@ -139,7 +139,7 @@ Settings come from the environment, and locally from the repo root's `.env`. Rea
 | `WEB_DIST_DIR` | `web/dist` | No | The built web app's folder. Compose sets it |
 | `POLL_INTERVAL_SECONDS` | `900` (`30` under compose) | No | How often each competitor is polled, with about 10% jitter |
 | `CHECK_INTERVAL_SECONDS` | `15` (`5` under compose) | No | How often the workers look for due work |
-| `<PROVIDER>_API_KEY` | none | At least one | Enables that provider: `DEEPSEEK`, `OPENAI`, `ANTHROPIC`, `GEMINI`, `MISTRAL`, `GROQ`, `XAI` or `MOCK`. Compose always sets `MOCK_API_KEY` |
+| `<PROVIDER>_API_KEY` | none | At least one | Enables that provider: `DEEPSEEK`, `OPENAI`, `ANTHROPIC`, `GEMINI`, `MISTRAL`, `GROQ`, `XAI` or `MOCK` |
 | `<PROVIDER>_MODEL` | See `server/src/llm/providers.ts` | No | Overrides the provider's model |
 | `<PROVIDER>_BASE_URL` | See `server/src/llm/providers.ts` | No | Overrides the provider's URL. Compose points `MOCK_BASE_URL` at the mock service |
 | `LLM_PROVIDER_ORDER` | All eight, DeepSeek first and mock last | No | Comma-separated order, which is also an allow-list |
@@ -164,7 +164,7 @@ The Vite dev server proxies `/api` and `/healthz` to `http://localhost:3000`, so
 | `npm run test:unit` (also `npm test`) | Server and web unit tests | Nothing |
 | `npm run test:integration` | Integration tests, on a throwaway `postgres:16` from Testcontainers | Docker, `python3` |
 | `npm run test:all` | Types, lint, unit and integration tests | Docker, `python3` |
-| `npm run test:compose` | The full compose stack from a temporary copy of the repo, using only `.env.example`: restarts, a stop during an LLM call, a crash-style exit and a Postgres outage. Takes a few minutes and isn't part of `test:all`. CI runs it as its own job | Docker |
+| `npm run test:compose` | The full compose stack from a temporary copy of the repo, using only `.env.example`: restarts, a stop during an LLM call, a crash-style exit, and Postgres stopped and frozen. Takes a few minutes and isn't part of `test:all`. CI runs it as its own job | Docker |
 | `npm run typecheck`, `npm run lint` | Each check alone | Nothing |
 
 Tests never touch your dev database or your `.env`.
@@ -225,6 +225,7 @@ The brief's scale, a few hundred competitors polled every 15 minutes, is about 0
 ## Known limits
 
 **Behaviour**
+- The default attempt cap covers only a short outage: with one provider, 3 attempts span about 15 seconds. A summary marked `failed` is never retried, so changes detected during a longer outage stay `failed`. This is the cost of bounding spend.
 - The prompt caps each listing field at 2,000 characters, so a change past the cap is detected and stored but the LLM can't see it, and its summary may be vague or wrong. The stub's fields are far shorter, so this can't happen today. A real fetcher should send an excerpt around the change.
 - A slow LLM call holds its batch: the next claim waits for the whole batch, for up to the 30-second timeout.
 - The web app trusts its generated types at run time, so a response that breaks the spec reaches the UI unchecked.
@@ -232,7 +233,6 @@ The brief's scale, a few hundred competitors polled every 15 minutes, is about 0
 - Idle checks log nothing, so a quiet log can look like a stopped worker.
 
 **Not tested**
-- Gemini with a bad key may return 400 rather than 401, which would mark summaries `failed` instead of failing over.
 - More than one app instance under compose, though concurrent claims are tested against real Postgres.
 - The restart policy after a hard crash. The compose check makes the process exit on SIGTERM, because a signal sent from inside can't SIGKILL PID 1, and `docker kill` counts as a manual stop.
 - A stop during an LLM call that takes longer than the 40-second grace period.

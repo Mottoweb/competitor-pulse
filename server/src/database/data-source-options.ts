@@ -5,8 +5,14 @@ import type { DatabaseConfig } from '../config';
 import { Snapshot } from '../poller/snapshot.entity';
 import { SourceCursor } from '../source/source-cursor.entity';
 
+export interface DataSourceLimits {
+  /** Gives up on a query with no answer. Left out for migrations, which can take long. */
+  queryTimeoutMs?: number;
+}
+
 export function buildDataSourceOptions(
   config: DatabaseConfig,
+  limits: DataSourceLimits = {},
 ): PostgresDataSourceOptions {
   return {
     type: 'postgres',
@@ -22,6 +28,9 @@ export function buildDataSourceOptions(
     synchronize: false,
     // Without this a host that never answers leaves callers waiting indefinitely.
     connectTimeoutMS: 5_000,
+    ...(limits.queryTimeoutMs === undefined
+      ? {}
+      : { extra: { query_timeout: limits.queryTimeoutMs } }),
     logging: config.logQueries,
   };
 }

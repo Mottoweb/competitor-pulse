@@ -132,7 +132,7 @@ Everything is TypeScript, including tests, migrations and config.
 |---|---|
 | 429, 5xx, timeout, network error, empty response | Back off, then try the next provider |
 | 401, 402, 403, 404 (bad key, no balance, wrong model) | Log an error, cool down for longer, try the next provider |
-| Other 400 | Mark `failed`, since the request itself is probably at fault |
+| Other 400 | Try the next provider straight away, with no cooldown, because one provider's 400 can be its own fault (updated by step 11b) |
 | All attempts used | Mark `failed` with the error recorded |
 
 **API**
@@ -192,6 +192,7 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 - [x] Step 10: Packaging (PR #11)
 - [x] Step 11: README (PR #12)
 - [x] Step 11a: Known-limit fixes (added by step 11, PR #13)
+- [x] Step 11b: Code review fixes (added after a whole-repo review, PR #14)
 - [ ] Step 12: Study doc
 
 ## Implementation log
@@ -490,6 +491,42 @@ Known gaps, accepted at approval:
 - **CI at merge:** both CI jobs were still queued, so the new compose job hadn't finished a run. If it fails, the README's linux/amd64 line needs to go back.
 - **Failed `DELETE` report:** Chromium reported the successful `DELETE` as `net::ERR_ABORTED` on both runs. The competitor was removed with no error shown, and the cause is unknown.
 - **Not exercised:** a Postgres host that really never answers, a hard crash, and the web timeout in a real browser.
+
+**Step 11b**
+
+You ran a code review of the whole repo after step 11a and chose which findings to fix.
+
+Deviations:
+
+- **Mock under compose:** compose no longer sets `MOCK_API_KEY`, as step 10 planned. It comes from `.env`, because a real provider's failure could otherwise store mock text as a finished summary.
+- **Failover table:** a 400 now moves to the next provider, which also closes the Gemini bad-key gap from step 5.
+
+Choices made during the step, which the user reviewed at approval:
+
+- The running app's queries time out after 10 seconds, through `query_timeout` on the pool. Migrations have no limit.
+- A summary save retries as a snapshot save does, because the call is already paid for.
+- Postgres is published on localhost only. The app's port stays on all interfaces.
+- The 503 filter logs the original error.
+- The list refetches after a failed change, because a timed-out remove may still have happened.
+- "First snapshot" shows only below the page limit, because at the limit older rows may exist.
+
+Left as they are, from the review:
+
+- The default attempts cover only a short outage, and `failed` is never retried. This is in the README's Known limits.
+- `fetchListing` has no timeout, a busy pool can report "database unavailable", the 503 filter could blame the database for a future real source's network error, and the compiled `data-source.js` looks for `.env` in the wrong folder.
+
+Facts later steps need:
+
+- **Step 12:** why `query_timeout` also fixes the health check pile-up, why a 400 fails over, the freeze check with `docker compose pause`, and the review as an example of finding gaps in earlier work. `/healthz`'s own 2-second limit stays, because it must answer sooner than the query timeout.
+- **DeepSeek:** your dev database has 9 summaries with `summary_provider = deepseek`, 3 per competitor, confirming it from the database. Each competitor's later rows are unchanged, with no call made.
+- **Demo:** a timeline stops changing after 3 changes, because the stub repeats version 4. Removing and re-adding a competitor restarts it at version 1, which is 3 more billed calls with a real key.
+- **Your running `db` container** keeps its old port binding until it is recreated with `docker compose up -d db`.
+
+Known gaps, accepted at approval:
+
+- **Network partition:** `docker pause` keeps connections alive, so a truly lost host isn't covered. A stuck socket stays in the pool until TCP gives up, and its queries time out in the meantime.
+- **Browser:** the list refresh and "First snapshot" text weren't run in a browser.
+- **CI at merge:** `test-all` passed and the compose job was still running, so it hadn't finished on this PR's code.
 
 ## Implementation steps
 

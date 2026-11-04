@@ -84,6 +84,7 @@ describe('Timeline', () => {
           summaryStatus: 'failed',
         }),
         snapshot({ fetchedAt: '2026-09-10T12:00:00.000Z' }),
+        snapshot({ fetchedAt: '2026-09-10T11:45:00.000Z' }),
       ]),
     });
 
@@ -95,12 +96,35 @@ describe('Timeline', () => {
       '2026-09-10T12:30:00.000Z',
       '2026-09-10T12:15:00.000Z',
       '2026-09-10T12:00:00.000Z',
+      '2026-09-10T11:45:00.000Z',
     ]);
     const [done, pending, failed, none] = items;
     expect(done).toHaveTextContent('Price dropped from $39/mo to $29/mo.');
     expect(pending).toHaveTextContent('Summary pending…');
     expect(failed).toHaveTextContent('Summary failed');
     expect(none).toHaveTextContent('No change since previous snapshot');
+  });
+
+  it('labels the first snapshot, because it has nothing to compare with', async () => {
+    stubFetch({ [`GET ${URL_100}`]: ok([snapshot()]) });
+
+    renderTimeline();
+
+    const [first] = await screen.findAllByRole('listitem');
+    expect(first).toHaveTextContent('First snapshot');
+    expect(first).not.toHaveTextContent('No change since previous snapshot');
+  });
+
+  it('does not call the oldest loaded snapshot the first when older ones may exist', async () => {
+    const full = Array.from({ length: 100 }, (_, index) =>
+      snapshot({ fetchedAt: new Date(Date.UTC(2026, 8, 10, 12, index)).toISOString() }),
+    );
+    stubFetch({ [`GET ${URL_100}`]: ok(full) });
+
+    renderTimeline();
+
+    const items = await screen.findAllByRole('listitem');
+    expect(items.at(-1)).toHaveTextContent('No change since previous snapshot');
   });
 
   it('renders a summary as plain text, because listing text is untrusted', async () => {
