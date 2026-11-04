@@ -239,7 +239,7 @@ The brief's scale, a few hundred competitors polled every 15 minutes, is about 0
 - The pending and failed badges in a real browser. Web tests cover their text, not their appearance.
 
 **Open**
-- The browser once reported a successful `DELETE` as a failed request. The competitor was removed, it didn't recur, and the cause is unknown.
+- Headless Chromium sometimes reports a successful `DELETE` as failed, with `net::ERR_ABORTED`. The competitor is removed and the UI shows no error. The cause is unknown.
 - 32 low and moderate `npm audit` findings remain in dev tooling and are accepted. The production image has no dev dependencies.
 
 ## AI tools used
