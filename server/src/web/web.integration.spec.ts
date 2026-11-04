@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { Logger, type INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { NestFactory } from '@nestjs/core';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -46,10 +46,9 @@ describe('serving the web app', () => {
       WEB_DIST_DIR: webRoot,
     });
 
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = moduleRef.createNestApplication();
+    // As main.ts boots it. Under Test.createTestingModule, serve-static sees no
+    // HTTP adapter at compile time and silently serves nothing.
+    app = await NestFactory.create(AppModule, { logger: false });
     await app.listen(0, '127.0.0.1');
     baseUrl = await app.getUrl();
   });
