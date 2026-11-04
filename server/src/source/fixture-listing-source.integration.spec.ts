@@ -92,4 +92,10 @@ describe('FixtureListingSource', () => {
   it('rejects an id it does not know', async () => {
     await expect(source.fetchListing('unknown')).rejects.toThrow('unknown');
   });
+
+  it('knows only the ids in its fixtures, not inherited object keys', async () => {
+    expect(await source.isKnown('acme')).toBe(true);
+    expect(await source.isKnown('unknown')).toBe(false);
+    expect(await source.isKnown('constructor')).toBe(false);
+  });
 });

@@ -40,6 +40,11 @@ export function parseDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
   };
 }
 
+export function parseServerPort(env: NodeJS.ProcessEnv): number {
+  void env;
+  return 0;
+}
+
 /**
  * Adds a .env file's values to env. A variable that is already set wins, so
  * real environment settings override the file. A missing file is fine, because

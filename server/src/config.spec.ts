@@ -1,7 +1,21 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadEnvFile, parseDatabaseConfig } from './config';
+import { loadEnvFile, parseDatabaseConfig, parseServerPort } from './config';
+
+describe('parseServerPort', () => {
+  it('defaults to 3000', () => {
+    expect(parseServerPort({})).toBe(3000);
+  });
+
+  it('reads PORT from the environment', () => {
+    expect(parseServerPort({ PORT: '8080' })).toBe(8080);
+  });
+
+  it.each(['abc', '0', '70000', '1.5'])('rejects PORT=%s', (port) => {
+    expect(() => parseServerPort({ PORT: port })).toThrow('PORT');
+  });
+});
 
 const COMPLETE_ENV = {
   POSTGRES_HOST: 'db',

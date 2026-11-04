@@ -45,6 +45,10 @@ class RecordingSource implements ListingSource {
       Promise.resolve(),
   ) {}
 
+  isKnown(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+
   async fetchListing(id: string): Promise<FetchedListing> {
     this.calls.push(id);
     this.inFlight += 1;
@@ -233,6 +237,7 @@ describe('PollWorker', () => {
         .mockRejectedValueOnce(new Error('cursor write failed'))
         .mockResolvedValue(undefined);
       const source: ListingSource = {
+        isKnown: () => Promise.resolve(true),
         fetchListing: () =>
           Promise.resolve({ listing: version('v1'), markSaved }),
       };

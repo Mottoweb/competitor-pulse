@@ -38,6 +38,11 @@ export class FixtureListingSource implements ListingSource {
     private readonly fixtures: Fixtures,
   ) {}
 
+  isKnown(competitorId: string): Promise<boolean> {
+    void competitorId;
+    return Promise.resolve(false);
+  }
+
   async fetchListing(competitorId: string): Promise<FetchedListing> {
     const versions = this.fixtures[competitorId];
     if (versions === undefined) {
