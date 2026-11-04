@@ -1,5 +1,9 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { Link, useParams } from 'react-router';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { errorMessage, listSnapshots, type Snapshot } from './api';
 
 const REFETCH_MS = 5000;
@@ -10,16 +14,17 @@ const PAGE_SIZE = 100;
 function SummaryLine({ snapshot }: { snapshot: Snapshot }): ReactElement {
   switch (snapshot.summaryStatus) {
     case 'none':
-      return <p>No change since previous snapshot</p>;
+      return <p className="text-sm text-muted-foreground">No change since previous snapshot</p>;
     case 'pending':
-      return <p>Summary pending…</p>;
+      return <Badge variant="secondary">Summary pending…</Badge>;
     case 'failed':
-      return <p>Summary failed</p>;
+      return <Badge variant="destructive">Summary failed</Badge>;
     case 'done':
       return (
-        <p>
-          <em>{snapshot.summary}</em>
-        </p>
+        <div className="rounded-md bg-muted p-3 text-sm">
+          <p className="mb-1 text-xs font-medium text-muted-foreground">AI summary</p>
+          <p className="break-words">{snapshot.summary}</p>
+        </div>
       );
   }
 }
@@ -62,41 +67,58 @@ function CompetitorTimeline({ id }: { id: string }): ReactElement {
   }, [id, limit]);
 
   return (
-    <section>
-      <Link to="/">← Back to competitors</Link>
-      <h2>{id}</h2>
+    <section className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">
+          ← Back to competitors
+        </Link>
+        <h2 className="text-lg font-semibold break-words">{id}</h2>
+      </div>
 
-      {error !== null && <p role="alert">{error}</p>}
+      {error !== null && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-      {snapshots === null && error === null && <p>Loading…</p>}
-      {snapshots?.length === 0 && <p>No snapshots yet.</p>}
+      {snapshots === null && error === null && (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      )}
+      {snapshots?.length === 0 && <p className="text-sm text-muted-foreground">No snapshots yet.</p>}
       {snapshots !== null && snapshots.length > 0 && (
-        <ul className="timeline">
+        <ul className="flex flex-col gap-4">
           {snapshots.map((snapshot) => (
             <li key={snapshot.fetchedAt}>
-              <time dateTime={snapshot.fetchedAt}>
-                {new Date(snapshot.fetchedAt).toLocaleString()}
-              </time>
-              <div>
-                <strong>{snapshot.title}</strong> — {snapshot.tagline}
-              </div>
-              <div>{snapshot.price}</div>
-              <div>{snapshot.description}</div>
-              <SummaryLine snapshot={snapshot} />
+              <Card className="items-start gap-3 p-4">
+                <time dateTime={snapshot.fetchedAt} className="text-xs text-muted-foreground">
+                  {new Date(snapshot.fetchedAt).toLocaleString()}
+                </time>
+                <div className="flex w-full flex-col gap-1 break-words">
+                  <strong className="font-semibold">{snapshot.title}</strong>
+                  <div className="text-sm text-muted-foreground">{snapshot.tagline}</div>
+                  <div className="text-sm font-medium">{snapshot.price}</div>
+                  <div className="text-sm">{snapshot.description}</div>
+                </div>
+                <div className="w-full">
+                  <SummaryLine snapshot={snapshot} />
+                </div>
+              </Card>
             </li>
           ))}
         </ul>
       )}
 
       {snapshots !== null && snapshots.length >= limit && (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          className="self-center"
           onClick={() => {
             setLimit(limit + PAGE_SIZE);
           }}
         >
           Show older
-        </button>
+        </Button>
       )}
     </section>
   );
