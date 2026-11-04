@@ -1,5 +1,12 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  copyFileSync,
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -34,6 +41,15 @@ const snapshotsSchema = z.array(
   }),
 );
 type Snapshots = z.infer<typeof snapshotsSchema>;
+
+const composeConfigSchema = z.object({
+  services: z.object({
+    db: z.object({
+      ports: z.array(z.object({ host_ip: z.string().optional() })),
+    }),
+    app: z.object({ environment: z.record(z.string(), z.string().nullable()) }),
+  }),
+});
 
 function check(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -119,10 +135,28 @@ class Stack {
     return `${this.appUrl}${path}`;
   }
 
-  async status(path: string): Promise<number | null> {
+  config(): z.infer<typeof composeConfigSchema> {
+    const output = this.read('config', '--format', 'json');
+    check(output !== null, 'docker compose config ran');
+    return composeConfigSchema.parse(JSON.parse(output));
+  }
+
+  /** Runs with .env changed, then puts it back. */
+  withEnvFile<T>(change: (text: string) => string, run: () => T): T {
+    const path = join(this.directory, '.env');
+    const original = readFileSync(path, 'utf8');
+    writeFileSync(path, change(original));
+    try {
+      return run();
+    } finally {
+      writeFileSync(path, original);
+    }
+  }
+
+  async status(path: string, timeoutMs = 5_000): Promise<number | null> {
     try {
       const response = await fetch(this.url(path), {
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       await response.text();
       return response.status;
@@ -256,6 +290,47 @@ async function checkRestartPolicy(stack: Stack): Promise<void> {
   });
 }
 
+/** A frozen host keeps its TCP connections open and answers nothing. */
+async function checkFrozenPostgres(stack: Stack): Promise<void> {
+  check(stack.run('pause', 'db'), 'Postgres freezes');
+  await waitFor('/healthz answers 503 in time while Postgres is frozen', 30, async () => {
+    return (await stack.status('/healthz', 4_000)) === 503;
+  });
+  await waitFor('the API answers 503 while Postgres is frozen', 60, async () => {
+    return (await stack.status('/api/competitors', 20_000)) === 503;
+  });
+  check(stack.run('unpause', 'db'), 'Postgres resumes');
+  await waitFor('/healthz recovers after the freeze', 60, async () => {
+    return (await stack.status('/healthz')) === 200;
+  });
+  const before = (await stack.snapshots()).length;
+  await waitFor('polling recovers after the freeze', 60, async () => {
+    return (await stack.snapshots()).length > before;
+  });
+}
+
+/** Read without starting anything, so a mistake here fails in seconds. */
+function checkComposeSettings(stack: Stack): void {
+  const [dbPort] = stack.config().services.db.ports;
+  check(
+    dbPort?.host_ip === '127.0.0.1',
+    `Postgres is published only on localhost, got ${dbPort?.host_ip}`,
+  );
+  check(
+    stack.config().services.app.environment.MOCK_API_KEY === 'mock',
+    'the example .env enables the mock',
+  );
+  const withoutMock = stack.withEnvFile(
+    (text) => text.replace(/^MOCK_API_KEY=.*$/m, ''),
+    () => stack.config().services.app.environment.MOCK_API_KEY,
+  );
+  check(
+    withoutMock === undefined,
+    `removing MOCK_API_KEY from .env disables the mock, got ${withoutMock}`,
+  );
+  console.log('ok: compose settings');
+}
+
 function changedCount(snapshots: Snapshots): number {
   return snapshots.filter(({ changed }) => changed).length;
 }
@@ -265,6 +340,8 @@ async function checkStack(stack: Stack): Promise<void> {
   for (const service of ['db', 'migrate', 'mock-llm', 'app']) {
     check(declared.includes(service), `compose declares service ${service}`);
   }
+
+  checkComposeSettings(stack);
 
   check(stack.run('up', '--detach', '--build'), 'docker compose up succeeded');
 
@@ -361,6 +438,8 @@ async function checkStack(stack: Stack): Promise<void> {
   await waitFor('polling recovers after the outage', 60, async () => {
     return (await stack.snapshots()).length > beforeOutageEnd;
   });
+
+  await checkFrozenPostgres(stack);
 
   const removed = await fetch(stack.url(`/api/competitors/${COMPETITOR}`), {
     method: 'DELETE',

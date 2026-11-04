@@ -6,7 +6,7 @@ function withCode(code: string): Error {
 }
 
 describe('isDatabaseUnavailable', () => {
-  it.each(['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'EPIPE'])(
+  it.each(['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH'])(
     'is true for the network error %s',
     (code) => {
       expect(isDatabaseUnavailable(withCode(code))).toBe(true);
@@ -24,6 +24,8 @@ describe('isDatabaseUnavailable', () => {
     'Connection terminated unexpectedly',
     'Connection terminated due to connection timeout',
     'timeout exceeded when trying to connect',
+    'Query read timeout',
+    'Client has encountered a connection error and is not queryable',
   ])('is true for the pool error "%s"', (message) => {
     expect(isDatabaseUnavailable(new Error(message))).toBe(true);
   });

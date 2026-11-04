@@ -197,6 +197,32 @@ describe('CompetitorList', () => {
     expect(screen.getByRole('link', { name: 'acme-crm' })).toBeInTheDocument();
   });
 
+  it('refreshes the list after a failed remove, so a stale row can clear', async () => {
+    let lists = 0;
+    stubFetch({
+      'GET /api/competitors': () => {
+        lists += 1;
+        return { status: 200, body: lists === 1 ? [{ id: 'acme-crm' }] : [] };
+      },
+      'DELETE /api/competitors/acme-crm': {
+        status: 404,
+        body: { message: 'Competitor acme-crm is not tracked' },
+      },
+    });
+    renderList();
+    await screen.findByRole('link', { name: 'acme-crm' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await confirmRemove();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Competitor acme-crm is not tracked',
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: 'acme-crm' })).not.toBeInTheDocument();
+    });
+  });
+
   it('shows the API message when the list fails to load', async () => {
     stubFetch({
       'GET /api/competitors': {
