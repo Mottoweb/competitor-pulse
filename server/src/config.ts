@@ -40,9 +40,16 @@ export function parseDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
   };
 }
 
+const serverEnvSchema = z.object({
+  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+});
+
 export function parseServerPort(env: NodeJS.ProcessEnv): number {
-  void env;
-  return 0;
+  const result = serverEnvSchema.safeParse(env);
+  if (!result.success) {
+    throw new Error('Invalid server configuration: PORT');
+  }
+  return result.data.PORT;
 }
 
 /**
