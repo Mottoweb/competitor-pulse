@@ -288,6 +288,7 @@ Facts later steps need:
    - The system overview above.
    - LLM setup, including running against the mock; config table.
    - Assumptions, scale and production notes, including the Postgres standby.
+   - Known limit: the prompt caps each listing field at 2,000 characters, so a change past the cap is detected and stored but the LLM can't see it, and its summary may be vague or wrong. The stub's fields are far shorter, so this can't happen today; a real fetcher should send an excerpt around the change. (updated by step 5)
    - Which real providers were actually tested.
    - AI tools used (Claude Code), as the brief asks.
 10. **Study doc:** a document for you to study so you can defend the design in the interview, kept outside the repo, so step 10 opens no PR: each decision and its alternatives, how the code implements it, and likely interview questions with answers. Explain the Postgres concepts carefully (row locks, `SKIP LOCKED`, transactions, indexes, query plans), and compare them with Redis and BullMQ, which you know better. Reuse the measurements on the `step/3-postgres-review` branch.

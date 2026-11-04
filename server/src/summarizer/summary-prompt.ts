@@ -2,6 +2,9 @@ import type { LlmPrompt } from '../llm/llm-client';
 import { normalise } from '../poller/content-hash';
 import type { Listing } from '../source/listing';
 
+// Limits billed input and untrusted text. Applies only to the prompt: storage and
+// change detection use the full text. Known limit: the model can't see a change
+// past the cap, so its summary may be vague or wrong.
 export const MAX_FIELD_LENGTH = 2000;
 
 const FIELDS = ['title', 'tagline', 'price', 'description'] as const;
