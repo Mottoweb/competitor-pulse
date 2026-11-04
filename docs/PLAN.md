@@ -190,7 +190,8 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 - [x] Step 8: Swagger and generated client (PR #9)
 - [x] Step 9: shadcn/ui (PR #10)
 - [x] Step 10: Packaging (PR #11)
-- [ ] Step 11: README
+- [x] Step 11: README (PR #12)
+- [ ] Step 11a: Known-limit fixes (added by step 11)
 - [ ] Step 12: Study doc
 
 ## Implementation log
@@ -445,6 +446,23 @@ Known gaps, accepted at approval:
 - **Not run:** more than one app instance, linux/amd64 (built only on an arm64 Mac), the restart policy after a crash, and a parallel `VACUUM` at the new `shm_size`.
 - **CI at merge:** CI passed on the final code (`2049265`), but it doesn't run the compose check. The merge didn't wait for the runs on the commits after it, which only change this file.
 
+**Step 11**
+
+Deviations:
+
+- **Not the last change:** you chose to fix some known limits after reading them, so step 11a follows and updates the README.
+- **Approval:** given in chat rather than with `/plan-step approve`.
+
+Choices made during the step, which the user reviewed at approval:
+
+- The "AI tools used" section uses your description: discussed first, written up as a plan, then each step done with a human in the loop.
+- `docs/PLAN.md` and `.claude/skills/plan-step/SKILL.md` stay in the repo, although they mention the interview.
+
+Facts later steps need:
+
+- **DeepSeek:** you confirmed it works, which closes the check left open in steps 7 and 10. It is the only real provider confirmed, and the README says so.
+- **Checked by hand:** the README's instructions were followed from a clean clone, with and without compose, on separate ports. That covered the API status codes, the troubleshooting messages and the Vite proxy, which closes the step 9 gap on the Vite dev server.
+
 ## Implementation steps
 
 **Each step is one PR, run with `/plan-step`:** it writes failing tests, implements, verifies, opens a PR and lists what you should check. It merges and ticks the step only after `/plan-step approve`. Later plan changes are made in this file.
@@ -492,6 +510,13 @@ Known gaps, accepted at approval:
      - Any other gaps still open in the implementation log.
    - **Which real providers were actually tested.**
    - **Not in the README:** interview preparation, which stays in the study doc outside the repo.
+11a. **Known-limit fixes:** one PR, test-first, ending with a README update to Known limits. (added by step 11)
+   - **Stale save:** deleting and re-adding a competitor during a poll must not save the old fetch into the new history.
+   - **`/healthz`:** its query gets a timeout and answers 503 when it expires.
+   - **Postgres down:** other endpoints answer 503 rather than a generic 500.
+   - **`test:compose`:** covers a stop during an LLM call, and the restart policy after a crash.
+   - **CI:** a job runs `test:compose` on Ubuntu, which also covers linux/amd64.
+   - **Web:** Remove asks for confirmation, and requests have a timeout.
 12. **Study doc:** a document for you to study so you can defend the design in the interview, kept outside the repo, so step 12 opens no PR: each decision and its alternatives, how the code implements it, and likely interview questions with answers. Explain the Postgres concepts carefully (row locks, `SKIP LOCKED`, transactions, indexes, query plans), and compare them with Redis and BullMQ, which you know better. Reuse the measurements on the `step/3-postgres-review` branch. Include the step 8 and step 9 choices.
 
 ## Verification
