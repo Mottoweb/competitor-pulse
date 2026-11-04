@@ -3,6 +3,7 @@ import { Logger, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
+import { specViolations } from '../testing/openapi-contract';
 import { HealthController } from './health.controller';
 
 describe('GET /healthz with Postgres unreachable', () => {
@@ -36,5 +37,13 @@ describe('GET /healthz with Postgres unreachable', () => {
 
     expect(response.body).toEqual({ status: 'unavailable' });
     expect(response.text).not.toContain('ECONNREFUSED');
+  });
+
+  it('matches the committed OpenAPI spec', async () => {
+    const response = await request(await app.getUrl())
+      .get('/healthz')
+      .expect(503);
+
+    expect(specViolations('get', '/healthz', response)).toEqual([]);
   });
 });

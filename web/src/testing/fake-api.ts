@@ -1,5 +1,5 @@
-import type { Snapshot } from '@competitor-pulse/shared';
 import { vi } from 'vitest';
+import type { Snapshot } from '../api';
 
 export interface FakeReply {
   status: number;
@@ -15,6 +15,8 @@ export interface FakeCall {
 }
 
 export type FakeRoute = FakeReply | ((call: FakeCall) => FakeReply | Promise<FakeReply>);
+
+const BASE = 'http://localhost';
 
 function toResponse(reply: FakeReply): Response {
   if (reply.text !== undefined) {
@@ -35,17 +37,20 @@ function toResponse(reply: FakeReply): Response {
  */
 export function stubFetch(routes: Record<string, FakeRoute>): FakeCall[] {
   const calls: FakeCall[] = [];
-  const fakeFetch = async (input: string, init?: RequestInit): Promise<Response> => {
-    const method = init?.method ?? 'GET';
+  const fakeFetch = async (input: string | Request, init?: RequestInit): Promise<Response> => {
+    const request = typeof input === 'string' ? new Request(new URL(input, BASE), init) : input;
+    const parsed = new URL(request.url);
+    const url = parsed.pathname + parsed.search;
+    const text = await request.clone().text();
     const call: FakeCall = {
-      method,
-      url: input,
-      body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined,
+      method: request.method,
+      url,
+      body: text === '' ? undefined : (JSON.parse(text) as unknown),
     };
     calls.push(call);
-    const route = routes[`${method} ${input}`];
+    const route = routes[`${request.method} ${url}`];
     if (route === undefined) {
-      return toResponse({ status: 599, body: { message: `No route: ${method} ${input}` } });
+      return toResponse({ status: 599, body: { message: `No route: ${request.method} ${url}` } });
     }
     return toResponse(typeof route === 'function' ? await route(call) : route);
   };

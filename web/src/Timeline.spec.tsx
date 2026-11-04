@@ -1,8 +1,8 @@
-import type { Snapshot } from '@competitor-pulse/shared';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
+import type { Snapshot } from './api';
 import { snapshot, stubFetch } from './testing/fake-api';
 import { Timeline } from './Timeline';
 

@@ -24,6 +24,8 @@ const snapshotListSchema: z.ZodType<Snapshot[]> = z.array(
 );
 const errorBodySchema = z.object({ message: z.string() });
 
+export type { Competitor, Snapshot };
+
 /** A failed API call. Its message is written to be shown to the user. */
 export class ApiError extends Error {}
 

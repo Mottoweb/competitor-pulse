@@ -1,10 +1,4 @@
 import 'reflect-metadata';
-import {
-  SUMMARY_STATUSES,
-  type Competitor as CompetitorContract,
-  type Snapshot as SnapshotContract,
-  type SummaryStatus,
-} from '@competitor-pulse/shared';
 import { Logger, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -23,8 +17,14 @@ import {
   truncateAll,
 } from '../testing/test-database';
 import { Competitor } from './competitor.entity';
+import {
+  SUMMARY_STATUSES,
+  type Competitor as CompetitorContract,
+  type Snapshot as SnapshotContract,
+  type SummaryStatus,
+} from './contract';
 
-// Strict and typed against the shared contract: a missing or extra field fails
+// Strict and typed against the server's contract: a missing or extra field fails
 // at run time, and a contract change breaks the compile here.
 const competitorSchema: z.ZodType<CompetitorContract> = z.strictObject({
   id: z.string(),
