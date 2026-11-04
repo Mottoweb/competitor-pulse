@@ -443,7 +443,7 @@ Known gaps, accepted at approval:
 - **No real provider in compose:** the stack has only run with `.env.example`, never with a real `.env`. The DeepSeek check from step 7 is still open.
 - **Stop during an LLM call:** the app stopped in under a second with no call in progress, so finishing a call within the grace period wasn't exercised.
 - **Not run:** more than one app instance, linux/amd64 (built only on an arm64 Mac), the restart policy after a crash, and a parallel `VACUUM` at the new `shm_size`.
-- **CI at merge:** CI was still running on the implementation commit when this was merged, and it doesn't run the compose check.
+- **CI at merge:** CI passed on the final code (`2049265`), but it doesn't run the compose check. The merge didn't wait for the runs on the commits after it, which only change this file.
 
 ## Implementation steps
 
