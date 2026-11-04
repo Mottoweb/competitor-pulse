@@ -1,4 +1,5 @@
 import type { DataSource } from 'typeorm';
+import { Competitor } from '../competitors/competitor.entity';
 import { SourceCursor } from '../source/source-cursor.entity';
 import type { Listing } from '../source/listing';
 import {
@@ -6,7 +7,10 @@ import {
   dropTestDatabase,
   truncateAll,
 } from '../testing/test-database';
-import { SnapshotQueries } from './snapshot-queries';
+import {
+  SnapshotQueries,
+  type ClaimDueCompetitorsInput,
+} from './snapshot-queries';
 import { Snapshot } from './snapshot.entity';
 
 const INTERVAL = { intervalSeconds: 900, jitterRatio: 0.1 };
@@ -42,6 +46,22 @@ describe('SnapshotQueries', () => {
     );
   }
 
+  /** Most claim tests only care which competitors were claimed. */
+  async function claimIds(
+    input: ClaimDueCompetitorsInput,
+  ): Promise<string[]> {
+    const claimed = await queries.claimDueCompetitors(input);
+    return claimed.map(({ id }) => id);
+  }
+
+  async function deleteAndReAdd(id: string): Promise<void> {
+    await dataSource.query(`DELETE FROM competitors WHERE id = $1`, [id]);
+    await dataSource.query(
+      `INSERT INTO competitors (id, created_at) VALUES ($1, now() + interval '1 minute')`,
+      [id],
+    );
+  }
+
   function save(competitorId: string, listing: Listing) {
     return queries.saveSnapshot({
       competitorId,
@@ -64,6 +84,18 @@ describe('SnapshotQueries', () => {
   });
 
   describe('claimDueCompetitors', () => {
+    it('returns when each claimed competitor was created', async () => {
+      await addCompetitors('a');
+      const [row] = await dataSource.manager.findBy(Competitor, { id: 'a' });
+
+      const claimed = await queries.claimDueCompetitors({
+        limit: 1,
+        ...INTERVAL,
+      });
+
+      expect(claimed).toEqual([{ id: 'a', createdAt: row?.createdAt }]);
+    });
+
     it('claims only competitors that are due, most overdue first', async () => {
       await addCompetitors('recent', 'oldest', 'not-due');
       await dataSource.query(
@@ -74,14 +106,14 @@ describe('SnapshotQueries', () => {
       );
 
       await expect(
-        queries.claimDueCompetitors({ limit: 10, ...INTERVAL }),
+        claimIds({ limit: 10, ...INTERVAL }),
       ).resolves.toEqual(['oldest', 'recent']);
     });
 
     it('claims no more than the limit', async () => {
       await addCompetitors('a', 'b', 'c');
 
-      const claimed = await queries.claimDueCompetitors({
+      const claimed = await claimIds({
         limit: 2,
         ...INTERVAL,
       });
@@ -95,7 +127,7 @@ describe('SnapshotQueries', () => {
         `UPDATE competitors SET next_poll_at = now() - interval '1 day'`,
       );
 
-      await queries.claimDueCompetitors({ limit: 10, ...INTERVAL });
+      await claimIds({ limit: 10, ...INTERVAL });
 
       const [row] = await secondsUntilNextPoll();
       expect(row?.seconds).toBeGreaterThanOrEqual(810 - 5);
@@ -108,11 +140,11 @@ describe('SnapshotQueries', () => {
         `UPDATE competitors SET next_poll_at = now() - interval '1 day'`,
       );
 
-      const first = await queries.claimDueCompetitors({
+      const first = await claimIds({
         limit: 10,
         ...INTERVAL,
       });
-      const second = await queries.claimDueCompetitors({
+      const second = await claimIds({
         limit: 10,
         ...INTERVAL,
       });
@@ -125,7 +157,7 @@ describe('SnapshotQueries', () => {
       const ids = Array.from({ length: 20 }, (_, index) => `c${index}`);
       await addCompetitors(...ids);
 
-      await queries.claimDueCompetitors({ limit: 20, ...INTERVAL });
+      await claimIds({ limit: 20, ...INTERVAL });
 
       const rows = await secondsUntilNextPoll();
       expect(new Set(rows.map((row) => row.seconds)).size).toBeGreaterThan(1);
@@ -142,7 +174,7 @@ describe('SnapshotQueries', () => {
         );
 
         await expect(
-          queries.claimDueCompetitors({ limit: 10, ...INTERVAL }),
+          claimIds({ limit: 10, ...INTERVAL }),
         ).resolves.toEqual(['free']);
       } finally {
         await holder.rollbackTransaction();
@@ -156,7 +188,7 @@ describe('SnapshotQueries', () => {
 
       const claims = await Promise.all(
         Array.from({ length: 5 }, () =>
-          queries.claimDueCompetitors({ limit: 20, ...INTERVAL }),
+          claimIds({ limit: 20, ...INTERVAL }),
         ),
       );
 
@@ -247,6 +279,46 @@ describe('SnapshotQueries', () => {
 
     it('drops the result when the competitor was deleted during the fetch', async () => {
       await expect(save('deleted', v1)).resolves.toBeNull();
+      await expect(dataSource.manager.count(Snapshot)).resolves.toBe(0);
+    });
+
+    it('saves when the competitor is the one that was claimed', async () => {
+      await addCompetitors('a');
+      const [claimed] = await queries.claimDueCompetitors({
+        limit: 1,
+        ...INTERVAL,
+      });
+
+      const saved = await queries.saveSnapshot({
+        competitorId: 'a',
+        listing: v1,
+        fetchedAt: new Date(),
+        claimedCreatedAt: claimed?.createdAt,
+      });
+
+      expect(saved).not.toBeNull();
+      await expect(dataSource.manager.count(Snapshot)).resolves.toBe(1);
+    });
+
+    it('drops a save for a competitor deleted and re-added since the claim', async () => {
+      await addCompetitors('a');
+      const [claimed] = await queries.claimDueCompetitors({
+        limit: 1,
+        ...INTERVAL,
+      });
+      await deleteAndReAdd('a');
+      const inTransaction = jest.fn(() => Promise.resolve());
+
+      const saved = await queries.saveSnapshot({
+        competitorId: 'a',
+        listing: v1,
+        fetchedAt: new Date(),
+        claimedCreatedAt: claimed?.createdAt,
+        inTransaction,
+      });
+
+      expect(saved).toBeNull();
+      expect(inTransaction).not.toHaveBeenCalled();
       await expect(dataSource.manager.count(Snapshot)).resolves.toBe(0);
     });
 

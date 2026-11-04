@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CompetitorList } from './CompetitorList';
 import { stubFetch, type FakeCall, type FakeReply } from './testing/fake-api';
 
@@ -39,6 +39,25 @@ function trackedServer(initial: string[]): {
 }
 
 describe('CompetitorList', () => {
+  beforeEach(() => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  });
+
+  it('asks before removing, naming the competitor, and keeps it if cancelled', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const calls = stubFetch({
+      'GET /api/competitors': { status: 200, body: [{ id: 'acme-crm' }] },
+    });
+    renderList();
+    await screen.findByRole('link', { name: 'acme-crm' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('acme-crm'));
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+    expect(screen.getByRole('link', { name: 'acme-crm' })).toBeInTheDocument();
+  });
+
   it('lists tracked competitors, each linking to its timeline', async () => {
     stubFetch({
       'GET /api/competitors': {

@@ -13,6 +13,8 @@ import {
 } from '@nestjs/swagger';
 import { DataSource } from 'typeorm';
 
+export const HEALTH_QUERY_TIMEOUT_MS = Symbol('HEALTH_QUERY_TIMEOUT_MS');
+
 @ApiSchema({ name: 'Health' })
 class HealthDto {
   @ApiProperty({ enum: ['ok'] })

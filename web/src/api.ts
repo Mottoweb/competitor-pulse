@@ -10,6 +10,8 @@ const client = createClient<paths>({
   fetch: (request) => globalThis.fetch(request),
 });
 
+export const REQUEST_TIMEOUT_MS = 15_000;
+
 /** A failed API call. Its message is written to be shown to the user. */
 export class ApiError extends Error {}
 
