@@ -189,7 +189,7 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 - [x] Step 7: Frontend (PR #8)
 - [x] Step 8: Swagger and generated client (PR #9)
 - [x] Step 9: shadcn/ui (PR #10)
-- [ ] Step 10: Packaging
+- [x] Step 10: Packaging (PR #11)
 - [ ] Step 11: README
 - [ ] Step 12: Study doc
 
@@ -414,6 +414,37 @@ Known gaps, accepted at approval:
 - **Vite dev server:** not confirmed with the Tailwind plugin; only `vite build` and Vitest ran it.
 - **Failed `DELETE` report from step 8:** it didn't appear in this step's run, and the cause is still unknown.
 
+**Step 10**
+
+Deviations:
+
+- **`--omit=optional`:** added to the image's `npm ci` beyond the plan's "no dev dependencies". `typeorm`'s optional peer on `ts-node` keeps `ts-node` and `typescript` installed with `--omit=dev` alone.
+- **Dirty tree at the start:** `.agents/` and `.vscode/` were untracked, which `/plan-step` says to stop for. The step carried on, because `.agents/` has been untracked since step 2 and `.vscode/settings.json` is empty. Neither is committed.
+- **No failing test run in Jest:** the tests commit is the script `server/src/testing/compose-check.ts`, as the plan says. No spec file changed.
+
+Choices made during the step, which the user reviewed at approval:
+
+- The mock stays on as the last fallback in compose, so a real provider failure can store a summary labelled `mock`. `LLM_PROVIDER_ORDER` leaves it out.
+- Compose polls every 30s and checks every 5s by default, for demos. Both can be overridden from `.env`.
+- The mock's port isn't published, so it can't clash with a local mock on 4001. Its `/control` endpoints are only reachable from inside the network.
+- `npm run test:compose` isn't in `test:all` or CI, because it builds images and takes a few minutes.
+- `shm_size` is 256 MB.
+
+Facts later steps need:
+
+- **Step 11, compose:** `cp .env.example .env` is required, or compose stops with `Set POSTGRES_USER in .env, see .env.example`. `docker compose up` reads the real `.env`, so any provider key in it gets used and billed. The app publishes `${PORT:-3000}` and needs that port free. `docker compose up db` still gives local development just the database.
+- **Step 11, overrides:** compose sets `POSTGRES_HOST`, `POSTGRES_PORT` (inside the network), `PORT`, `WEB_DIST_DIR`, `MOCK_API_KEY` and `MOCK_BASE_URL` on the app, and these win over `.env`. `POSTGRES_PORT` in `.env` is still the port published on the host.
+- **Step 11, check:** `npm run test:compose` needs Docker and takes a few minutes. It copies the repo to a temp folder with `.env.example` as its `.env`, so no real key reaches it, and it uses its own project and free ports.
+- **Step 12:** the optional peer behind `--omit=optional`, `node` rather than `npm` as the process that receives the stop signal, the one-shot `migrate` service, and `stop_grace_period` above the LLM timeout.
+- **Checked by hand:** a stack from a clean copy ran in headless Chromium, using cached build 1243. It covered adding all 3 competitors, a timeline filling in and a deep-link reload, with no console errors or failed requests. Swagger UI answered 200, and the app runs as user `node`.
+
+Known gaps, accepted at approval:
+
+- **No real provider in compose:** the stack has only run with `.env.example`, never with a real `.env`. The DeepSeek check from step 7 is still open.
+- **Stop during an LLM call:** the app stopped in under a second with no call in progress, so finishing a call within the grace period wasn't exercised.
+- **Not run:** more than one app instance, linux/amd64 (built only on an arm64 Mac), the restart policy after a crash, and a parallel `VACUUM` at the new `shm_size`.
+- **CI at merge:** CI passed on the final code (`2049265`), but it doesn't run the compose check. The merge didn't wait for the runs on the commits after it, which only change this file.
+
 ## Implementation steps
 
 **Each step is one PR, run with `/plan-step`:** it writes failing tests, implements, verifies, opens a PR and lists what you should check. It merges and ticks the step only after `/plan-step approve`. Later plan changes are made in this file.
@@ -452,7 +483,7 @@ Known gaps, accepted at approval:
    - **Configuration:** a table of every environment variable, with its default, whether it's required, and what it does, including `LOG_SQL`.
    - **API:** the endpoints and their status codes, the fields added beyond the brief, Swagger UI at `/api/docs`, and the committed spec. (updated by step 8)
    - **Development:** the dev commands, including that `npm run start:dev -w @competitor-pulse/server` restarts on source changes but not on `.env` changes, and the Vite dev server and its proxy.
-   - **Common tasks:** running each test command and what it needs, creating and running migrations, and refreshing the spec and web types with `npm run openapi:generate`. (updated by step 8)
+   - **Common tasks:** running each test command and what it needs, including `npm run test:compose`, creating and running migrations, and refreshing the spec and web types with `npm run openapi:generate`. (updated by step 8 and step 10)
    - **Project layout:** the main folders and what each one holds.
    - **Troubleshooting:** the app refusing to start with no provider key, missing `POSTGRES_*` variables, and a port already in use.
    - **Scale and production notes:** including the Postgres standby, snapshot growth, and the cost controls.
@@ -474,6 +505,7 @@ Known gaps, accepted at approval:
 | `npm run test:unit` (also `npm test`) | `*.spec.ts` | Nothing |
 | `npm run test:integration` | `*.integration.spec.ts` | Docker, `python3` |
 | `npm run test:all` | Types, lint, unit tests, integration tests | Docker, `python3` |
+| `npm run test:compose` | The full compose stack from a clean copy, not part of `test:all` (updated by step 10) | Docker |
 
 Integration tests start a throwaway `postgres:16` on a random port with Testcontainers, so they don't need or touch dev Postgres. Each spec file creates its own database in that container, so spec files can run in parallel.
 
