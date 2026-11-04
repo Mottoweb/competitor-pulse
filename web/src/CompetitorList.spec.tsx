@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CompetitorList } from './CompetitorList';
 import { stubFetch, type FakeCall, type FakeReply } from './testing/fake-api';
 
@@ -11,6 +11,11 @@ function renderList(): void {
       <CompetitorList />
     </MemoryRouter>,
   );
+}
+
+async function confirmRemove(): Promise<void> {
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
 }
 
 /** A small stateful server, so the tests see the list refetched after a change. */
@@ -39,12 +44,7 @@ function trackedServer(initial: string[]): {
 }
 
 describe('CompetitorList', () => {
-  beforeEach(() => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-  });
-
   it('asks before removing, naming the competitor, and keeps it if cancelled', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const calls = stubFetch({
       'GET /api/competitors': { status: 200, body: [{ id: 'acme-crm' }] },
     });
@@ -52,8 +52,13 @@ describe('CompetitorList', () => {
     await screen.findByRole('link', { name: 'acme-crm' });
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('acme-crm');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('acme-crm'));
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    });
     expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
     expect(screen.getByRole('link', { name: 'acme-crm' })).toBeInTheDocument();
   });
@@ -163,6 +168,7 @@ describe('CompetitorList', () => {
       throw new Error('Expected the link to sit in a list item');
     }
     await userEvent.click(within(row).getByRole('button', { name: 'Remove' }));
+    await confirmRemove();
 
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: 'acme-crm' })).not.toBeInTheDocument();
@@ -183,6 +189,7 @@ describe('CompetitorList', () => {
     await screen.findByRole('link', { name: 'acme-crm' });
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await confirmRemove();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Competitor acme-crm is not tracked',
