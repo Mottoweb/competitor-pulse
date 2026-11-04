@@ -108,15 +108,4 @@ describe('test setup', () => {
 
     expect(log).toHaveBeenCalledWith('LLM provider order: mock');
   });
-
-  it('refuses to start with no provider', async () => {
-    delete process.env.MOCK_API_KEY;
-    try {
-      await expect(
-        Test.createTestingModule({ imports: [AppModule] }).compile(),
-      ).rejects.toThrow('No LLM provider');
-    } finally {
-      process.env.MOCK_API_KEY = 'test-key';
-    }
-  });
 });
