@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: competitor_pulse
+          POSTGRES_PASSWORD: competitor_pulse
+          POSTGRES_DB: competitor_pulse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U competitor_pulse"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start mock LLM instances
+        run: |
+          PORT=4001 nohup python3 files/mock-llm/mock-llm-server.py > mock-llm-4001.log 2>&1 &
+          PORT=4002 nohup python3 files/mock-llm/mock-llm-server.py > mock-llm-4002.log 2>&1 &
+          curl --silent --show-error --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:4001/control/stats
+          curl --silent --show-error --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:4002/control/stats
+
+      - name: Build shared contract
+        run: npm run build:shared
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test

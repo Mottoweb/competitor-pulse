@@ -174,7 +174,7 @@ Dockerfile, docker-compose.yml, .env.example, .gitignore, README.md
 
 Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`.
 
-- [ ] Step 1: Scaffold
+- [x] Step 1: Scaffold (PR #2)
 - [ ] Step 2: Postgres layer
 - [ ] Step 3: Postgres review package
 - [ ] Step 4: Polling
@@ -187,6 +187,20 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 ## Implementation log
 
 Facts later steps need, and deviations from this plan, added as each step is approved.
+
+**Step 1 (no deviations)**
+
+- **Nest 11, not 12:** Nest 12 is ESM-only, and Jest can only load it on Node 22 through `--experimental-vm-modules`. Stay on the 11-compatible lines: `@nestjs/typeorm` 11 and `@nestjs/serve-static` 5. `@nestjs/typeorm` 12 is ESM and breaks Jest. TypeORM 1.x worked with this pairing in a spike.
+- **TypeScript `~6.0.3`:** version 7 is outside the supported range of `typescript-eslint` and `ts-jest`.
+- **`shared` must be built first:** it compiles to CommonJS in `dist`, and consumers import that. `verify` and CI build it first. Run `npm run build:shared` after changing it.
+- **Step 7:** `web` imports only types from `shared` so far. Importing a runtime value may need a Vite alias to `shared/src`, which hasn't been tested.
+- **Jest doesn't type-check:** `isolatedModules` makes `ts-jest` transpile only, so type errors in specs are caught by `npm run typecheck`.
+- **Port 3000 is hardcoded** in `server/src/main.ts`. Replace it when the `zod` config module arrives.
+- **Postgres:** compose uses host port 5432, overridable with `POSTGRES_PORT`. User, password and database are all `competitor_pulse`, locally and in CI.
+- **CI services:** Postgres on `localhost:5432`, and mock LLM instances on ports 4001 and 4002. No test uses them yet.
+- **`multer` override:** root `package.json` forces `multer` to 2.5.0 because `@nestjs/platform-express` 11.2.8 pins the vulnerable 2.4.0. Remove it once Nest updates the pin. Changing an override also needs the lockfile updated (`npm update multer`), because `npm install` alone left 2.4.0 in place.
+- **Step 8:** 32 low and moderate audit findings remain in dev tooling and are accepted. The Dockerfile's production image must omit dev dependencies.
+- **Merge gate:** GitHub doesn't enforce CI, because branch protection is unavailable on this private repo's plan. `/plan-step approve` is the only gate.
 
 ## Implementation steps
 

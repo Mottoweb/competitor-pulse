@@ -1,0 +1,33 @@
+{
+  "name": "competitor-pulse",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:shared": "npm run build -w @competitor-pulse/shared",
+    "typecheck": "tsc -p tsconfig.json && npm run typecheck --workspaces",
+    "lint": "eslint .",
+    "test": "npm test --workspaces --if-present",
+    "verify": "npm run build:shared && npm run typecheck && npm run lint && npm test"
+  },
+  "overrides": {
+    "multer": "2.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.0.0",
+    "jiti": "^2.0.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.0.0"
+  }
+}
