@@ -217,6 +217,8 @@ describe('real responses against the committed OpenAPI spec', () => {
       );
       expect(assets.length).toBeGreaterThan(0);
       const responses = await Promise.all(assets.map((asset) => fetch(asset)));
+      // An unread response holds its connection open, which stalls app.close().
+      await Promise.all(responses.map((response) => response.arrayBuffer()));
       expect(
         responses
           .filter((response) => response.status !== 200)
