@@ -1,17 +1,26 @@
 import type { ReactElement } from 'react';
-import type { Competitor } from '@competitor-pulse/shared';
+import { Link, Route, Routes } from 'react-router';
+import { CompetitorList } from './CompetitorList';
+import { Timeline } from './Timeline';
 
-const competitors: readonly Competitor[] = [];
+function NotFound(): ReactElement {
+  return (
+    <section>
+      <p>Page not found.</p>
+      <Link to="/">← Back to competitors</Link>
+    </section>
+  );
+}
 
 export function App(): ReactElement {
   return (
     <main>
       <h1>CompetitorPulse</h1>
-      <ul>
-        {competitors.map((competitor) => (
-          <li key={competitor.id}>{competitor.id}</li>
-        ))}
-      </ul>
+      <Routes>
+        <Route path="/" element={<CompetitorList />} />
+        <Route path="/competitors/:id" element={<Timeline />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
     </main>
   );
 }

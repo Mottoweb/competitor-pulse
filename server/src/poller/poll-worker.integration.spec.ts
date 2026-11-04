@@ -328,4 +328,35 @@ describe('PollWorker', () => {
       expect(rows.at(-1)?.changed).toBe(false);
     });
   });
+
+  describe('logging', () => {
+    it('logs what each poll found', async () => {
+      const log = jest.spyOn(Logger.prototype, 'log');
+      await addCompetitors('acme');
+      const { worker } = fixtureWorker();
+
+      for (let poll = 0; poll < 5; poll += 1) {
+        await worker.check();
+        await makeAllDue();
+      }
+
+      expect(log.mock.calls.map((call) => String(call[0]))).toEqual([
+        'acme: first snapshot saved',
+        'acme: changed, summary queued',
+        'acme: changed, summary queued',
+        'acme: changed, summary queued',
+        'acme: no change',
+      ]);
+    });
+
+    it('logs its schedule at startup', async () => {
+      const log = jest.spyOn(Logger.prototype, 'log');
+      const { worker } = fixtureWorker();
+
+      worker.onApplicationBootstrap();
+      await worker.beforeApplicationShutdown();
+
+      expect(log).toHaveBeenCalledWith('Polling every 900s, checking every 15s');
+    });
+  });
 });

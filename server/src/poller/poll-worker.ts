@@ -12,10 +12,17 @@ import {
   type ListingSource,
 } from '../source/listing-source';
 import { POLLER_CONFIG, type PollerConfig } from './poller-config';
-import { SnapshotQueries } from './snapshot-queries';
+import { SnapshotQueries, type SavedSnapshot } from './snapshot-queries';
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function describeSave(saved: SavedSnapshot): string {
+  if (saved.first) {
+    return 'first snapshot saved';
+  }
+  return saved.changed ? 'changed, summary queued' : 'no change';
 }
 
 @Injectable()
@@ -34,6 +41,9 @@ export class PollWorker
   ) {}
 
   onApplicationBootstrap(): void {
+    this.logger.log(
+      `Polling every ${this.config.pollIntervalSeconds}s, checking every ${this.config.checkIntervalSeconds}s`,
+    );
     void this.check();
     this.timer = setInterval(
       () => void this.check(),
@@ -103,7 +113,9 @@ export class PollWorker
         });
         if (saved === null) {
           this.logger.log(`${competitorId} was deleted during its poll`);
+          return;
         }
+        this.logger.log(`${competitorId}: ${describeSave(saved)}`);
         return;
       } catch (error) {
         const delayMs = this.config.saveRetryDelaysMs[attempt];

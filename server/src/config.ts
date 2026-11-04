@@ -10,7 +10,7 @@ const databaseEnvSchema = z.object({
   POSTGRES_USER: z.string().min(1),
   POSTGRES_PASSWORD: z.string().min(1),
   POSTGRES_DB: z.string().min(1),
-  NODE_ENV: z.string().optional(),
+  LOG_SQL: z.enum(['true', 'false']).optional(),
 });
 
 export interface DatabaseConfig {
@@ -36,7 +36,7 @@ export function parseDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
     username: parsed.POSTGRES_USER,
     password: parsed.POSTGRES_PASSWORD,
     database: parsed.POSTGRES_DB,
-    logQueries: parsed.NODE_ENV !== 'test' && parsed.NODE_ENV !== 'production',
+    logQueries: parsed.LOG_SQL === 'true',
   };
 }
 

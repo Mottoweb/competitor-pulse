@@ -1,0 +1,31 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0 auto;
+  max-width: 720px;
+  padding: 16px;
+}
+
+[role='alert'] {
+  color: #b00020;
+}
+
+.timeline {
+  list-style: none;
+  padding: 0;
+}
+
+.timeline li {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  padding: 12px;
+}
+
+.timeline time {
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.timeline p {
+  margin: 8px 0 0;
+}

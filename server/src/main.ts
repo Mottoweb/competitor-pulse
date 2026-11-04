@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { join } from 'node:path';
 import { AppModule } from './app.module';
@@ -11,7 +12,9 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   // Lets a stop signal finish the check in progress before the database closes.
   app.enableShutdownHooks();
-  await app.listen(parseServerPort(process.env));
+  const port = parseServerPort(process.env);
+  await app.listen(port);
+  new Logger('Bootstrap').log(`Listening on http://localhost:${port}`);
 }
 
 void bootstrap();
