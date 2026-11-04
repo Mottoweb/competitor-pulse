@@ -179,7 +179,7 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 - [x] Step 2: Postgres layer (PR #3)
 - [x] Step 3: Postgres review package (dropped, PR #4 closed unmerged)
 - [x] Step 4: Polling (PR #5)
-- [ ] Step 5: Summaries
+- [x] Step 5: Summaries (PR #6)
 - [ ] Step 6: API
 - [ ] Step 7: Frontend
 - [ ] Step 8: Packaging
@@ -259,6 +259,37 @@ Facts later steps need:
 - **Step 6:** `ListingSource` only has `fetchListing`, so the 422 for an id the source doesn't know needs a new method on it.
 - **Port:** 3000 is still hardcoded in `main.ts`.
 
+**Step 5**
+
+Deviations:
+
+- **`mock` provider:** an eighth row in the provider table, so stored summaries say `mock` rather than naming a real provider. It is last in the default order and is enabled by `MOCK_API_KEY`.
+- **Anthropic:** a small adapter on `@anthropic-ai/sdk`, not the OpenAI-compatible endpoint. Default model `claude-opus-5-5`, overridable with `ANTHROPIC_MODEL`. Its server-side `fallbacks` option isn't used; a refusal has no text, so it fails over like an empty reply.
+- **Token limit setting:** the provider table says whether to send `max_tokens` or `max_completion_tokens`, which OpenAI's newer models are reported to need. The limit is 1000, because thinking models count their thinking against it.
+- **Mock LLM in tests:** specs start the provided mock on free ports, so CI no longer starts instances on 4001 and 4002. Integration tests now need `python3`.
+- **Test changes:** the Anthropic test asserts `Authorization: Bearer`, which SDK 1.4.0 sends, not `x-api-key`. "Refuses to start" moved to `llm.module.spec.ts`, because booting `AppModule` left a database connection retrying after Jest shut down, which failed one CI run after all tests had passed.
+
+Choices made during the step, which the user reviewed at approval:
+
+- `LLM_PROVIDER_ORDER` is also an allow-list, and rejects unknown or repeated names.
+- An explicit `LLM_MAX_ATTEMPTS` is used as given, even below the provider count.
+- 408 is transient, and any other 4xx outside the failover table is treated like a 400.
+- A bad key retries on the next provider with no delay; transient failures back off from 5s, doubling up to 60s. Cooldowns are 30s and 5 minutes.
+- Fields stay capped at 2,000 characters in the prompt. See the known limit in step 9.
+
+Facts later steps need:
+
+- **Starting the app needs a provider key:** any test that boots `AppModule` must remove real keys from `process.env` and set a dummy one, as `app.module.integration.spec.ts` does. Otherwise it could call a real provider, or fail to start.
+- **Test helper:** `MockLlm` in `server/src/testing/mock-llm.ts` starts the provided mock on a free port.
+- **Modules:** `LlmModule` exports `LLM_CONFIG`, `ProviderFailover` and `LLM_CLIENT`. `SummarizerModule` now runs `SummaryWorker`.
+- **Checked by hand:** the built app ran against a throwaway Postgres and the mock. It refused to start with no key (exit 1), made 3 calls for 6 snapshots, retried after an injected 500, and showed no false change after a restart.
+
+Known gaps, accepted at approval:
+
+- **No real provider has been called.** `gemini-3.8-flash` came from Google's docs, the other default models from third-party sources, and `grok-4` from no source. Each can be overridden with `<PROVIDER>_MODEL`.
+- **Gemini with a bad key** may return 400 rather than 401, which would mark summaries `failed` instead of failing over. This is untested.
+- **A slow call holds its batch:** the next claim waits for the whole batch, for up to the 30s timeout.
+
 ## Implementation steps
 
 **Each step is one PR, run with `/plan-step`:** it writes failing tests, implements, verifies, opens a PR and lists what you should check. It merges and ticks the step only after `/plan-step approve`. Later plan changes are made in this file.
@@ -280,9 +311,9 @@ Facts later steps need:
 3. **Postgres review package:** dropped. See the implementation log.
 4. **Polling:** source stub, poll worker, write retries. Also wires the database into Nest: install `@nestjs/typeorm` 11, register the query classes, and load `.env` in `main.ts`. `app.module.spec.ts` is a unit test that boots `AppModule` with no services, so importing the database there means deciding how that test changes, with your agreement. (updated by step 2)
 5. **Summaries:** LLM providers, failover, summary worker.
-6. **API:** competitor and snapshot endpoints, `/healthz`.
+6. **API:** competitor and snapshot endpoints, `/healthz`. API tests that boot `AppModule` need the provider setup described in the step 5 log. (updated by step 5)
 7. **Frontend:** both views, served by NestJS (`@nestjs/serve-static`) with a Vite proxy in development.
-8. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies. The production image has no dev dependencies, so the migrate service must run the compiled `dist/migrations` without `ts-node`, using a compiled data source. Compose needs `.env`, so `docker compose up` from a clean checkout needs `cp .env.example .env` first. The image must include `files/fixtures/listings.json` at the same path relative to `server/dist`, because the stub reads it at startup. (updated by step 2 and step 4)
+8. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies. The production image has no dev dependencies, so the migrate service must run the compiled `dist/migrations` without `ts-node`, using a compiled data source. Compose needs `.env`, so `docker compose up` from a clean checkout needs `cp .env.example .env` first. The image must include `files/fixtures/listings.json` at the same path relative to `server/dist`, because the stub reads it at startup. The app needs a provider key to start, so compose sets `MOCK_API_KEY` and points `MOCK_BASE_URL` at the mock-llm service. Set `stop_grace_period` above the 30s LLM timeout, so a stop can finish calls in progress. (updated by step 2, step 4 and step 5)
 9. **README:**
    - Install, build and run, with and without compose, including `cp .env.example .env` as a required first step.
    - The system overview above.
@@ -295,15 +326,15 @@ Facts later steps need:
 
 ## Verification
 
-**CI (GitHub Actions):** `.github/workflows/ci.yml` runs on every pull request, and again on each new push to it. Type checks, lint, unit tests and integration tests are separate named steps, so a PR shows which one failed. It starts the mock LLM instances, with no provider keys. A step can't be approved until CI is green.
+**CI (GitHub Actions):** `.github/workflows/ci.yml` runs on every pull request, and again on each new push to it. Type checks, lint, unit tests and integration tests are separate named steps, so a PR shows which one failed. It sets no provider keys, and the specs start their own mock LLM servers. (updated by step 5) A step can't be approved until CI is green.
 
 **Test commands:**
 
 | Command | Runs | Needs |
 |---|---|---|
 | `npm run test:unit` (also `npm test`) | `*.spec.ts` | Nothing |
-| `npm run test:integration` | `*.integration.spec.ts` | Docker |
-| `npm run test:all` | Build `shared`, types, lint, unit tests, integration tests | Docker |
+| `npm run test:integration` | `*.integration.spec.ts` | Docker, `python3` |
+| `npm run test:all` | Build `shared`, types, lint, unit tests, integration tests | Docker, `python3` |
 
 Integration tests start a throwaway `postgres:16` on a random port with Testcontainers, so they don't need or touch dev Postgres. Each spec file creates its own database in that container, so spec files can run in parallel.
 
