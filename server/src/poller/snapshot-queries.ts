@@ -24,6 +24,8 @@ export interface SaveSnapshotInput {
 export interface SavedSnapshot {
   id: string;
   changed: boolean;
+  /** True when the competitor had no earlier snapshot. */
+  first: boolean;
 }
 
 const insertedIdSchema = z.object({ id: z.string() });
@@ -115,7 +117,7 @@ export class SnapshotQueries {
       await input.inTransaction?.(tx);
 
       const { id } = insertedIdSchema.parse(result.identifiers[0]);
-      return { id, changed };
+      return { id, changed, first: previous === null };
     });
   }
 

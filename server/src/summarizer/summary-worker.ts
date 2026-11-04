@@ -40,6 +40,9 @@ export class SummaryWorker
   ) {}
 
   onApplicationBootstrap(): void {
+    this.logger.log(
+      `Checking for pending summaries every ${this.config.checkIntervalSeconds}s`,
+    );
     void this.check();
     this.timer = setInterval(
       () => void this.check(),
@@ -101,7 +104,11 @@ export class SummaryWorker
       });
       if (!saved) {
         this.logger.log(`Summary ${claim.snapshotId} is no longer pending`);
+        return;
       }
+      this.logger.log(
+        `${claim.competitorId}: summary saved by ${provider.name} (${provider.model}) on attempt ${claim.attempt}`,
+      );
     } catch (error) {
       this.logger.error(
         `Saving summary ${claim.snapshotId} failed: ${messageOf(error)}`,
@@ -150,8 +157,14 @@ export class SummaryWorker
         attempt: claim.attempt,
         error: message,
       });
+      this.logger.error(
+        `${claim.competitorId}: summary gave up after attempt ${claim.attempt}: ${message}`,
+      );
       return;
     }
+    this.logger.warn(
+      `${claim.competitorId}: summary retries in ${retryAfterSeconds}s`,
+    );
     await this.queries.scheduleSummaryRetry({
       snapshotId: claim.snapshotId,
       attempt: claim.attempt,

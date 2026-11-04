@@ -6,6 +6,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -54,6 +55,8 @@ function toSnapshotContract(row: Snapshot): SnapshotContract {
 
 @Injectable()
 export class CompetitorsService {
+  private readonly logger = new Logger(CompetitorsService.name);
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly snapshots: SnapshotQueries,
@@ -89,6 +92,7 @@ export class CompetitorsService {
     if (insertedRowsSchema.parse(result.raw).length === 0) {
       throw new ConflictException(`Already tracked: ${id}`);
     }
+    this.logger.log(`Now tracking ${id}`);
     return { id };
   }
 
@@ -99,6 +103,7 @@ export class CompetitorsService {
     if (result.affected === 0) {
       throw this.notTracked(id);
     }
+    this.logger.log(`Stopped tracking ${id}`);
   }
 
   async listSnapshots(
