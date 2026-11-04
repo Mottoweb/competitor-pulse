@@ -1,30 +1,14 @@
-import {
-  SUMMARY_STATUSES,
-  type Competitor,
-  type Snapshot,
-} from '@competitor-pulse/shared';
-import { z } from 'zod';
+import createClient from 'openapi-fetch';
+import type { components, paths } from './generated/api';
 
-const competitorListSchema: z.ZodType<Competitor[]> = z.array(
-  z.object({ id: z.string() }),
-);
-const snapshotListSchema: z.ZodType<Snapshot[]> = z.array(
-  z.object({
-    fetchedAt: z.string(),
-    title: z.string(),
-    tagline: z.string(),
-    price: z.string(),
-    description: z.string(),
-    changed: z.boolean(),
-    summary: z.string().nullable(),
-    summaryStatus: z.enum(SUMMARY_STATUSES),
-    summaryProvider: z.string().nullable(),
-    summaryModel: z.string().nullable(),
-  }),
-);
-const errorBodySchema = z.object({ message: z.string() });
+export type Competitor = components['schemas']['Competitor'];
+export type Snapshot = components['schemas']['Snapshot'];
 
-export type { Competitor, Snapshot };
+const client = createClient<paths>({
+  baseUrl: window.location.origin,
+  // Looks fetch up on each call, rather than keeping the one present at import.
+  fetch: (request) => globalThis.fetch(request),
+});
 
 /** A failed API call. Its message is written to be shown to the user. */
 export class ApiError extends Error {}
@@ -33,61 +17,61 @@ export function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : 'Something went wrong';
 }
 
-async function readJson(response: Response): Promise<unknown> {
-  try {
-    return (await response.json()) as unknown;
-  } catch {
-    return undefined;
-  }
+/** An error may come from a proxy rather than the API, so its body isn't trusted. */
+function apiMessage(body: unknown): string | undefined {
+  return typeof body === 'object' &&
+    body !== null &&
+    'message' in body &&
+    typeof body.message === 'string'
+    ? body.message
+    : undefined;
 }
 
-async function send(path: string, init?: RequestInit): Promise<Response> {
-  let response: Response;
+async function send<T>(
+  request: Promise<{ data?: T; error?: unknown; response: Response }>,
+): Promise<T | undefined> {
+  let result: Awaited<typeof request>;
   try {
-    response = await fetch(path, init);
+    result = await request;
   } catch {
     throw new ApiError('Could not reach the server');
   }
-  if (!response.ok) {
-    const body = errorBodySchema.safeParse(await readJson(response));
+  if (!result.response.ok) {
     throw new ApiError(
-      body.success ? body.data.message : `Request failed (${response.status})`,
+      apiMessage(result.error) ?? `Request failed (${result.response.status})`,
     );
   }
-  return response;
+  return result.data;
 }
 
-async function getParsed<T>(path: string, schema: z.ZodType<T>): Promise<T> {
-  const parsed = schema.safeParse(await readJson(await send(path)));
-  if (!parsed.success) {
+async function sendForData<T>(
+  request: Promise<{ data?: T; error?: unknown; response: Response }>,
+): Promise<T> {
+  const data = await send(request);
+  if (data === undefined) {
     throw new ApiError('Unexpected response from the server');
   }
-  return parsed.data;
-}
-
-function competitorPath(id: string): string {
-  return `/api/competitors/${encodeURIComponent(id)}`;
+  return data;
 }
 
 export function listCompetitors(): Promise<Competitor[]> {
-  return getParsed('/api/competitors', competitorListSchema);
+  return sendForData(client.GET('/api/competitors'));
 }
 
 export async function addCompetitor(id: string): Promise<void> {
-  await send('/api/competitors', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
-  });
+  await send(client.POST('/api/competitors', { body: { id } }));
 }
 
 export async function removeCompetitor(id: string): Promise<void> {
-  await send(competitorPath(id), { method: 'DELETE' });
+  await send(
+    client.DELETE('/api/competitors/{id}', { params: { path: { id } } }),
+  );
 }
 
 export function listSnapshots(id: string, limit: number): Promise<Snapshot[]> {
-  return getParsed(
-    `${competitorPath(id)}/snapshots?limit=${limit}`,
-    snapshotListSchema,
+  return sendForData(
+    client.GET('/api/competitors/{id}/snapshots', {
+      params: { path: { id }, query: { limit } },
+    }),
   );
 }

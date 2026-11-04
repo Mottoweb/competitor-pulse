@@ -4,8 +4,28 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import {
+  ApiOkResponse,
+  ApiProperty,
+  ApiSchema,
+  ApiServiceUnavailableResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { DataSource } from 'typeorm';
 
+@ApiSchema({ name: 'Health' })
+class HealthDto {
+  @ApiProperty({ enum: ['ok'] })
+  status!: 'ok';
+}
+
+@ApiSchema({ name: 'HealthUnavailable' })
+class HealthUnavailableDto {
+  @ApiProperty({ enum: ['unavailable'] })
+  status!: 'unavailable';
+}
+
+@ApiTags('health')
 @Controller('healthz')
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);
@@ -13,7 +33,9 @@ export class HealthController {
   constructor(private readonly dataSource: DataSource) {}
 
   @Get()
-  async check(): Promise<{ status: 'ok' }> {
+  @ApiOkResponse({ type: HealthDto })
+  @ApiServiceUnavailableResponse({ type: HealthUnavailableDto })
+  async check(): Promise<HealthDto> {
     try {
       await this.dataSource.query('SELECT 1');
     } catch (error) {

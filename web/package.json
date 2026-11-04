@@ -13,12 +13,10 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@competitor-pulse/shared": "0.0.0",
     "openapi-fetch": "^0.17.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router": "^7.18.5",
-    "zod": "^4.6.7"
+    "react-router": "^7.18.5"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",

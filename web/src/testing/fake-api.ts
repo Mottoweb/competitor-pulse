@@ -16,8 +16,6 @@ export interface FakeCall {
 
 export type FakeRoute = FakeReply | ((call: FakeCall) => FakeReply | Promise<FakeReply>);
 
-const BASE = 'http://localhost';
-
 function toResponse(reply: FakeReply): Response {
   if (reply.text !== undefined) {
     return new Response(reply.text, { status: reply.status });
@@ -37,8 +35,7 @@ function toResponse(reply: FakeReply): Response {
  */
 export function stubFetch(routes: Record<string, FakeRoute>): FakeCall[] {
   const calls: FakeCall[] = [];
-  const fakeFetch = async (input: string | Request, init?: RequestInit): Promise<Response> => {
-    const request = typeof input === 'string' ? new Request(new URL(input, BASE), init) : input;
+  const fakeFetch = async (request: Request): Promise<Response> => {
     const parsed = new URL(request.url);
     const url = parsed.pathname + parsed.search;
     const text = await request.clone().text();
