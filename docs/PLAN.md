@@ -75,8 +75,8 @@ Everything is TypeScript, including tests, migrations and config.
 
 - **Compiler:** `strict: true` plus `noUncheckedIndexedAccess` and `noImplicitOverride` in server and web.
 - **Lint:** ESLint with type-aware rules, with `no-explicit-any` and the `no-unsafe-*` rules as errors. No `@ts-ignore`; `@ts-expect-error` only in tests, with a reason.
-- **Shared contract:** API types (`Snapshot`, `Competitor`, `SummaryStatus`) live in a `shared/` npm workspace used by both server and web, so a contract change breaks the compile on both sides. Step 8 replaces this: `shared/` is removed, the OpenAPI spec is the contract, and a test fails if the committed spec is out of date. (updated by step 7)
-- **Untrusted data:** env vars, request bodies, fixtures and LLM responses are parsed with `zod`, with types inferred from the schemas. `unknown` is narrowed, never cast.
+- **API contract:** the OpenAPI spec generated from the server's DTOs and committed at `server/openapi.json` is the one contract. The web app's types and requests are generated from it, so a contract change breaks the web compile once regenerated, and tests fail if the spec or the generated types are out of date. (updated by step 8)
+- **Untrusted data:** env vars, request bodies, fixtures and LLM responses are parsed with `zod`, with types inferred from the schemas. `unknown` is narrowed, never cast. The web app is the exception for success responses from its own API: it trusts the generated types, and contract tests check real responses against the spec. Error bodies are still narrowed, because they can come from a proxy. (updated by step 8)
 - **Database:** prefer typed repository methods. Query builder strings can't be compiler-checked, so integration tests cover them. Raw queries declare an explicit row type.
 - **Closed sets:** statuses and provider names are string-literal unions, with exhaustive `switch` checks.
 - **Check:** `npm run test:all` runs type checks, lint, unit tests and integration tests.
@@ -167,8 +167,10 @@ server/src/llm/            # provider table, clients, failover
 server/src/health/         # GET /healthz
 server/migrations/
 server/src/web/            # serves the built web app
-web/src/                   # CompetitorList, Timeline, typed api client
-shared/                    # API contract types used by server and web, until step 8
+web/src/                   # CompetitorList, Timeline, api client on openapi-fetch
+server/src/openapi/        # Swagger setup, spec generation, error DTO
+server/openapi.json        # committed spec, from npm run openapi:generate
+web/src/generated/         # types generated from the spec
 files/                     # provided, unchanged
 .github/workflows/ci.yml
 Dockerfile, docker-compose.yml, .env.example, .gitignore, README.md
@@ -185,7 +187,7 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 - [x] Step 5: Summaries (PR #6)
 - [x] Step 6: API (PR #7)
 - [x] Step 7: Frontend (PR #8)
-- [ ] Step 8: Swagger and generated client
+- [x] Step 8: Swagger and generated client (PR #9)
 - [ ] Step 9: shadcn/ui
 - [ ] Step 10: Packaging
 - [ ] Step 11: README
@@ -353,6 +355,38 @@ Known gaps, accepted at approval:
 - **Idle checks log nothing,** so a quiet log can look like a stopped worker. Each poll logs a line, including `no change`; lower that to debug level in production.
 - **Exclude list:** tests prove the `/api` entry. The `/healthz` entry is unproven, because its controller answers first with or without it.
 
+**Step 8**
+
+Deviations:
+
+- **Swagger UI path:** `/api/docs`, with the document at `/api/docs-json`, not `/api` itself. `/api` stays a JSON 404 and its test is unchanged.
+- **Static serving:** `WebModule` limits the app's fallback route with `renderPath`, not `exclude`. `serve-static`'s error handler answers 404 to any error on an excluded path, so malformed JSON on POST returned 404 in the real app since step 7. It now returns 400, and an oversized body returns 413. This also replaces the step 7 gap about the exclude list.
+- **Test changes, in the tests commit:** removed the web test "reports a response that breaks the contract", which went with `zod`; removed the `SUMMARY_STATUSES` assertion from the `AppModule` boot test; pointed contract imports at the server's `contract.ts` and the web's `api.ts`; replaced `zod` with a type check in a `CompetitorList.spec.tsx` helper.
+- **Test change after the tests commit, agreed in review:** the Swagger UI test reads the asset responses. Unread responses held connections open, so `app.close()` stalled and `afterAll` timed out.
+
+Choices made during the step, which the user reviewed at approval:
+
+- `@ApiSchema` keeps the contract names (`Snapshot`, not `SnapshotDto`) in the spec and generated types.
+- Swagger UI and the document are served in every environment, with no auth.
+- `ajv` and `ajv-formats` are dev dependencies, used to check real responses against the spec. The test helper `closeObjects` makes undeclared fields fail, because the generated schemas allow them.
+
+Facts later steps need:
+
+- **Refreshing the contract:** after changing a controller or DTO, run `npm run openapi:generate`. It writes `server/openapi.json` and `web/src/generated/api.ts`, and tests fail if either is stale. It needs no database, because Nest's preview mode creates no providers.
+- **Contract files:** `server/src/competitors/contract.ts` holds the contract types and `SUMMARY_STATUSES`. DTOs in `competitors.dto.ts` implement them. `openapi-typescript` installs its own TypeScript 5.9, because it doesn't declare support for 6; the repo stays on 6 with no override.
+- **Tests:** `web/src/testing/fake-api.ts` stubs `fetch` with a `Request`, and the client looks up `globalThis.fetch` on each call so the stub applies. `server/src/testing/openapi-contract.ts` provides `specViolations`. A test that uses `fetch` must read each response, or `app.close()` stalls.
+- **Step 10:** there is no `shared` workspace to build any more. `@nestjs/swagger` is a production dependency, the document is built at startup, and the image doesn't need `server/openapi.json`.
+- **Step 11:** `npm start` has no root script, so use `npm start -w @competitor-pulse/server`. The README entry above lists the rest.
+- **Checked by hand:** the built app ran against a throwaway Postgres and the mock in headless Chromium, using cached build 1243 because the browser skill's expected one isn't installed. It covered add, remove, the 400, 409 and 422 messages, a timeline filling in with a summary, a deep-link reload and Swagger UI.
+
+Known gaps, accepted at approval:
+
+- **Failed `DELETE` report:** the browser reported the `DELETE` as a failed request, although the competitor was removed and the refreshed list was empty. The cause wasn't found. `openapi-fetch` doesn't cancel the 204 body.
+- **No run-time check in the web app:** a response that breaks the spec reaches the UI unchecked, and a 200 with a non-JSON body shows "Could not reach the server".
+- **500 responses** are declared in the spec, but no test checks a real one. The 503 check uses a fake `DataSource`.
+- **Vite dev proxy:** not run in this step. Its config is unchanged apart from removing the alias.
+- **Confidence in the last run:** the merge went ahead on a passing local `test:all`, with CI on the final test fix still running.
+
 ## Implementation steps
 
 **Each step is one PR, run with `/plan-step`:** it writes failing tests, implements, verifies, opens a PR and lists what you should check. It merges and ticks the step only after `/plan-step approve`. Later plan changes are made in this file.
@@ -379,14 +413,27 @@ Known gaps, accepted at approval:
 8. **Swagger and generated client:** `@nestjs/swagger` with response DTO classes that `implements` the contract, Swagger UI under `/api`, and a committed spec file. `openapi-typescript` and `openapi-fetch` generate the web client's types and requests. Tests: real responses are checked against the spec, and a test fails if the committed spec is out of date. Remove `shared/` (server types move into the server) and `zod` from the web app, including the Vite alias. Chosen after comparing `nestjs-zod` and a hand-written spec, and Orval and Hey API. (added by step 7)
 9. **shadcn/ui:** add Tailwind and shadcn/ui, and restyle both views. Behaviour doesn't change, so the existing web tests are the check, with any test change explained. (added by step 7)
 10. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies. The production image has no dev dependencies, so the migrate service must run the compiled `dist/migrations` without `ts-node`, using a compiled data source. Compose needs `.env`, so `docker compose up` from a clean checkout needs `cp .env.example .env` first. The image must include `files/fixtures/listings.json` at the same path relative to `server/dist`, because the stub reads it at startup. The app needs a provider key to start, so compose sets `MOCK_API_KEY` and points `MOCK_BASE_URL` at the mock-llm service. Set `stop_grace_period` above the 30s LLM timeout, so a stop can finish calls in progress. An app healthcheck on `/healthz` must set its own timeout, because the endpoint has none. (updated by step 2, step 4, step 5 and step 6)
-11. **README:**
-   - Install, build and run, with and without compose, including `cp .env.example .env` as a required first step.
-   - The system overview above.
-   - LLM setup, including running against the mock; config table.
-   - Assumptions, scale and production notes, including the Postgres standby.
-   - Known limit: the prompt caps each listing field at 2,000 characters, so a change past the cap is detected and stored but the LLM can't see it, and its summary may be vague or wrong. The stub's fields are far shorter, so this can't happen today; a real fetcher should send an excerpt around the change. (updated by step 5)
-   - Which real providers were actually tested.
-   - AI tools used (Claude Code), as the brief asks.
+11. **README:** the last change to the repo, written once everything else is merged, so it describes the system as delivered. It covers what the brief asks for and what a developer new to the repo would expect.
+   - **Asked for by the brief:**
+     - How to install, build and run locally, with and without compose, including `cp .env.example .env` as a required first step.
+     - Which LLM option was used and how to configure it, including running against the mock.
+     - Assumptions made.
+     - AI tools used (Claude Code).
+     - How it was deployed and how to access it, only if the cloud bonus is done.
+   - **What it is:** a short description, the system overview above, and the tech stack.
+   - **Prerequisites:** Node version, Docker, and `python3` for the mock LLM and integration tests.
+   - **Configuration:** a table of every environment variable, with its default, whether it's required, and what it does, including `LOG_SQL`.
+   - **API:** the endpoints and their status codes, the fields added beyond the brief, Swagger UI at `/api/docs`, and the committed spec. (updated by step 8)
+   - **Development:** the dev commands, including that `npm run start:dev -w @competitor-pulse/server` restarts on source changes but not on `.env` changes, and the Vite dev server and its proxy.
+   - **Common tasks:** running each test command and what it needs, creating and running migrations, and refreshing the spec and web types with `npm run openapi:generate`. (updated by step 8)
+   - **Project layout:** the main folders and what each one holds.
+   - **Troubleshooting:** the app refusing to start with no provider key, missing `POSTGRES_*` variables, and a port already in use.
+   - **Scale and production notes:** including the Postgres standby, snapshot growth, and the cost controls.
+   - **Known limits:**
+     - The prompt caps each listing field at 2,000 characters, so a change past the cap is detected and stored but the LLM can't see it, and its summary may be vague or wrong. The stub's fields are far shorter, so this can't happen today; a real fetcher should send an excerpt around the change. (updated by step 5)
+     - Any other gaps still open in the implementation log.
+   - **Which real providers were actually tested.**
+   - **Not in the README:** interview preparation, which stays in the study doc outside the repo.
 12. **Study doc:** a document for you to study so you can defend the design in the interview, kept outside the repo, so step 12 opens no PR: each decision and its alternatives, how the code implements it, and likely interview questions with answers. Explain the Postgres concepts carefully (row locks, `SKIP LOCKED`, transactions, indexes, query plans), and compare them with Redis and BullMQ, which you know better. Reuse the measurements on the `step/3-postgres-review` branch. Include the step 8 and step 9 choices.
 
 ## Verification
@@ -399,7 +446,7 @@ Known gaps, accepted at approval:
 |---|---|---|
 | `npm run test:unit` (also `npm test`) | `*.spec.ts` | Nothing |
 | `npm run test:integration` | `*.integration.spec.ts` | Docker, `python3` |
-| `npm run test:all` | Build `shared`, types, lint, unit tests, integration tests | Docker, `python3` |
+| `npm run test:all` | Types, lint, unit tests, integration tests | Docker, `python3` |
 
 Integration tests start a throwaway `postgres:16` on a random port with Testcontainers, so they don't need or touch dev Postgres. Each spec file creates its own database in that container, so spec files can run in parallel.
 
@@ -420,7 +467,7 @@ Automated tests never call a real provider, so they spend no money. Tables are t
 
 **API tests (`test:integration`; Jest, Supertest, real Postgres):**
 
-- Response shape checked against the shared contract, including `summary` being `null` when unchanged, pending or failed.
+- Response shape checked against the server's contract and the committed OpenAPI spec, including `summary` being `null` when unchanged, pending or failed. (updated by step 8)
 - Each row of the API behaviour table.
 - Deleting a competitor removes its snapshots and cursor.
 
