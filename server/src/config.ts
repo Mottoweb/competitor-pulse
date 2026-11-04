@@ -1,4 +1,14 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { z } from 'zod';
+
+const REQUIRED_IN_PRODUCTION = [
+  'POSTGRES_HOST',
+  'POSTGRES_PORT',
+  'POSTGRES_USER',
+  'POSTGRES_PASSWORD',
+  'POSTGRES_DB',
+] as const;
 
 const databaseEnvSchema = z.object({
   POSTGRES_HOST: z.string().min(1).default('localhost'),
@@ -19,6 +29,17 @@ export interface DatabaseConfig {
 }
 
 export function parseDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
+  if (env.NODE_ENV === 'production') {
+    // The defaults are for local development. Production must not fall back to them.
+    const missing = REQUIRED_IN_PRODUCTION.filter(
+      (name) => env[name] === undefined,
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing database configuration in production: ${missing.join(', ')}`,
+      );
+    }
+  }
   const result = databaseEnvSchema.safeParse(env);
   if (!result.success) {
     // Names the invalid settings without echoing their values, which may be secret.
@@ -36,8 +57,17 @@ export function parseDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
   };
 }
 
-// Stub.
+/**
+ * Adds a .env file's values to env. A variable that is already set wins, so
+ * real environment settings override the file. A missing file is fine, because
+ * deployed environments set real variables instead.
+ */
 export function loadEnvFile(path: string, env: NodeJS.ProcessEnv): void {
-  void path;
-  void env;
+  if (!existsSync(path)) {
+    return;
+  }
+  const values = parseEnv(readFileSync(path, 'utf8'));
+  for (const [name, value] of Object.entries(values)) {
+    env[name] ??= value;
+  }
 }
