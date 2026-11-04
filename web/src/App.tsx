@@ -5,17 +5,19 @@ import { Timeline } from './Timeline';
 
 function NotFound(): ReactElement {
   return (
-    <section>
+    <section className="flex flex-col gap-4">
       <p>Page not found.</p>
-      <Link to="/">← Back to competitors</Link>
+      <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">
+        ← Back to competitors
+      </Link>
     </section>
   );
 }
 
 export function App(): ReactElement {
   return (
-    <main>
-      <h1>CompetitorPulse</h1>
+    <main className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8">
+      <h1 className="text-xl font-semibold">CompetitorPulse</h1>
       <Routes>
         <Route path="/" element={<CompetitorList />} />
         <Route path="/competitors/:id" element={<Timeline />} />

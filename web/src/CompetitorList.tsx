@@ -1,5 +1,10 @@
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { Link } from 'react-router';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   addCompetitor,
   errorMessage,
@@ -56,11 +61,12 @@ export function CompetitorList(): ReactElement {
   }
 
   return (
-    <section>
-      <form onSubmit={handleAdd}>
-        <label>
-          Competitor id{' '}
-          <input
+    <section className="flex flex-col gap-6">
+      <form onSubmit={handleAdd} className="flex flex-col gap-2">
+        <Label htmlFor="competitor-id">Competitor id</Label>
+        <div className="flex gap-2">
+          <Input
+            id="competitor-id"
             value={draft}
             onChange={(event) => {
               setDraft(event.target.value);
@@ -68,33 +74,50 @@ export function CompetitorList(): ReactElement {
             placeholder="acme-crm"
             required
           />
-        </label>{' '}
-        <button type="submit" disabled={busy}>
-          Add
-        </button>
+          <Button type="submit" disabled={busy}>
+            Add
+          </Button>
+        </div>
       </form>
 
-      {error !== null && <p role="alert">{error}</p>}
+      {error !== null && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-      {competitors === null && error === null && <p>Loading…</p>}
-      {competitors?.length === 0 && <p>No competitors tracked yet.</p>}
+      {competitors === null && error === null && (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      )}
+      {competitors?.length === 0 && (
+        <p className="text-sm text-muted-foreground">No competitors tracked yet.</p>
+      )}
       {competitors !== null && competitors.length > 0 && (
-        <ul>
-          {competitors.map(({ id }) => (
-            <li key={id}>
-              <Link to={`/competitors/${encodeURIComponent(id)}`}>{id}</Link>{' '}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  void change(() => removeCompetitor(id));
-                }}
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
+        <Card className="gap-0 py-0">
+          <ul className="divide-y">
+            {competitors.map(({ id }) => (
+              <li key={id} className="flex items-center justify-between gap-4 px-4 py-2">
+                <Link
+                  to={`/competitors/${encodeURIComponent(id)}`}
+                  className="min-w-0 font-medium break-words hover:underline"
+                >
+                  {id}
+                </Link>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    void change(() => removeCompetitor(id));
+                  }}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </section>
   );
