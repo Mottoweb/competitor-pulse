@@ -4,10 +4,21 @@ import type { components, paths } from './generated/api';
 export type Competitor = components['schemas']['Competitor'];
 export type Snapshot = components['schemas']['Snapshot'];
 
+export const REQUEST_TIMEOUT_MS = 15_000;
+
+/** The timer stays running after the headers arrive, so it also covers reading the body. */
+function fetchWithTimeout(request: Request): Promise<Response> {
+  const controller = new AbortController();
+  setTimeout(() => {
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+  // Looks fetch up on each call, rather than keeping the one present at import.
+  return globalThis.fetch(request, { signal: controller.signal });
+}
+
 const client = createClient<paths>({
   baseUrl: window.location.origin,
-  // Looks fetch up on each call, rather than keeping the one present at import.
-  fetch: (request) => globalThis.fetch(request),
+  fetch: fetchWithTimeout,
 });
 
 /** A failed API call. Its message is written to be shown to the user. */

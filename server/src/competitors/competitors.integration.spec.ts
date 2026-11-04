@@ -23,6 +23,8 @@ import {
   type Snapshot as SnapshotContract,
   type SummaryStatus,
 } from './contract';
+import { specViolations } from '../testing/openapi-contract';
+import { CompetitorsService } from './competitors.service';
 
 // Strict and typed against the server's contract: a missing or extra field fails
 // at run time, and a contract change breaks the compile here.
@@ -137,6 +139,42 @@ describe('competitors API', () => {
   beforeEach(async () => {
     await truncateAll(dataSource);
     await mock.reset();
+  });
+
+  describe('when Postgres is unavailable', () => {
+    function connectionRefused(): Error {
+      return Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), {
+        code: 'ECONNREFUSED',
+      });
+    }
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('returns 503 with a message, and does not leak the error', async () => {
+      jest
+        .spyOn(app.get(CompetitorsService, { strict: false }), 'list')
+        .mockRejectedValueOnce(connectionRefused());
+
+      const response = await request(baseUrl).get('/api/competitors').expect(503);
+
+      expect(response.text).not.toContain('ECONNREFUSED');
+      expect(response.body).toEqual({
+        statusCode: 503,
+        message: 'The database is unavailable. Try again shortly.',
+        error: 'Service Unavailable',
+      });
+      expect(specViolations('get', '/api/competitors', response)).toEqual([]);
+    });
+
+    it('still returns 500 for any other error', async () => {
+      jest
+        .spyOn(app.get(CompetitorsService, { strict: false }), 'list')
+        .mockRejectedValueOnce(new Error('a bug'));
+
+      await request(baseUrl).get('/api/competitors').expect(500);
+    });
   });
 
   describe('GET /api/competitors', () => {

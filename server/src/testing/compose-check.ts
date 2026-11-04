@@ -13,6 +13,7 @@ import { z } from 'zod';
 const REPO_ROOT = join(__dirname, '../../..');
 const PROJECT = 'competitor-pulse-check';
 const COMPETITOR = 'acme-crm';
+const SLOW_COMPETITOR = 'north-analytics';
 const FIXTURE_CHANGES = 3;
 const SIGKILL_EXIT_CODE = 137;
 
@@ -160,6 +161,101 @@ async function waitFor(
   throw new Error(`Check failed: ${description} (waited ${seconds}s)`);
 }
 
+function psql(stack: Stack, sql: string): string {
+  const output = stack.read(
+    'exec',
+    '-T',
+    'db',
+    'sh',
+    '-c',
+    `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "${sql}"`,
+  );
+  check(output !== null, `psql ran: ${sql}`);
+  return output.trim();
+}
+
+/** The mock's port isn't published, so this runs inside its container. */
+function setMockLatency(stack: Stack, latencyMs: number): void {
+  const script = [
+    'import urllib.request as u',
+    `u.urlopen(u.Request('http://127.0.0.1:4001/control/configure', data=b'{"latencyMs": ${latencyMs}}', headers={'Content-Type': 'application/json'}), timeout=3)`,
+  ].join('\n');
+  check(
+    stack.read('exec', '-T', 'mock-llm', 'python', '-c', script) !== null,
+    'the mock accepted its latency',
+  );
+}
+
+/** A stop must wait for a billed call in progress and save its result. */
+async function checkStopDuringLlmCall(stack: Stack): Promise<void> {
+  setMockLatency(stack, 8_000);
+  const added = await fetch(stack.url('/api/competitors'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id: SLOW_COMPETITOR }),
+  });
+  await added.text();
+  check(added.status === 201, `POST answered 201, got ${added.status}`);
+
+  let inFlight = '';
+  await waitFor('an LLM call is in progress', 60, () => {
+    inFlight = psql(
+      stack,
+      `SELECT id FROM snapshots WHERE competitor_id = '${SLOW_COMPETITOR}' AND summary_status = 'pending' AND summary_attempts > 0 ORDER BY id LIMIT 1`,
+    );
+    return inFlight !== '';
+  });
+
+  check(stack.run('stop', 'app'), 'the app stops');
+  const stopped = stack.service('app');
+  check(
+    stopped.ExitCode !== SIGKILL_EXIT_CODE,
+    'the app finished its call within the grace period',
+  );
+  const summary = psql(
+    stack,
+    `SELECT summary_status, summary_attempts FROM snapshots WHERE id = ${inFlight}`,
+  );
+  check(
+    summary === 'done|1',
+    `the call in progress was saved before the app stopped, got ${summary}`,
+  );
+  console.log('ok: a stop finished the LLM call in progress and saved it');
+
+  setMockLatency(stack, 0);
+  check(stack.run('start', 'app'), 'the app starts again');
+}
+
+/**
+ * The process exits while Docker thinks it should be running. A signal from
+ * inside only reaches PID 1 through a handler, so this is SIGTERM rather than
+ * SIGKILL, and docker kill would count as a manual stop.
+ */
+async function checkRestartPolicy(stack: Stack): Promise<void> {
+  const id = stack.read('ps', '--quiet', 'app')?.trim();
+  check(id !== undefined && id !== '', 'the app container exists');
+  const restartCount = (): number => {
+    const inspected = spawnSync(
+      'docker',
+      ['inspect', '--format', '{{.RestartCount}}', id],
+      { encoding: 'utf8' },
+    );
+    return Number(inspected.stdout.trim());
+  };
+  await waitFor('the app is healthy before it exits', 60, () => {
+    return stack.service('app').Health === 'healthy';
+  });
+  const before = restartCount();
+
+  stack.read('exec', '-T', 'app', 'sh', '-c', 'kill -TERM 1');
+
+  await waitFor('the restart policy brings the app back', 90, () => {
+    return (
+      restartCount() > before && stack.service('app').Health === 'healthy'
+    );
+  });
+}
+
 function changedCount(snapshots: Snapshots): number {
   return snapshots.filter(({ changed }) => changed).length;
 }
@@ -247,9 +343,15 @@ async function checkStack(stack: Stack): Promise<void> {
     );
   });
 
+  await checkStopDuringLlmCall(stack);
+  await checkRestartPolicy(stack);
+
   check(stack.run('stop', 'db'), 'Postgres stops');
   await waitFor('/healthz answers 503 while Postgres is down', 30, async () => {
     return (await stack.status('/healthz')) === 503;
+  });
+  await waitFor('the API answers 503 while Postgres is down', 30, async () => {
+    return (await stack.status('/api/competitors')) === 503;
   });
   check(stack.run('start', 'db'), 'Postgres starts again');
   await waitFor('/healthz recovers', 60, async () => {

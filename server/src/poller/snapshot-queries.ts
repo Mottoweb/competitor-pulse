@@ -13,10 +13,18 @@ export interface ClaimDueCompetitorsInput {
   jitterRatio: number;
 }
 
+export interface ClaimedCompetitor {
+  id: string;
+  /** Tells this competitor apart from a later one re-added with the same id. */
+  createdAt: Date;
+}
+
 export interface SaveSnapshotInput {
   competitorId: string;
   listing: Listing;
   fetchedAt: Date;
+  /** When set, the save is dropped if the competitor was re-added since this claim. */
+  claimedCreatedAt?: Date;
   /** Runs inside the save transaction, so its writes commit or roll back with the snapshot. */
   inTransaction?: (tx: EntityManager) => Promise<void>;
 }
@@ -39,11 +47,13 @@ export class SnapshotQueries {
    * transaction, which commits before any fetch starts. Time comes from the
    * database, so every instance shares one clock.
    */
-  claimDueCompetitors(input: ClaimDueCompetitorsInput): Promise<string[]> {
+  claimDueCompetitors(
+    input: ClaimDueCompetitorsInput,
+  ): Promise<ClaimedCompetitor[]> {
     return this.dataSource.transaction(async (tx) => {
       const due = await tx
         .createQueryBuilder(Competitor, 'competitor')
-        .select('competitor.id')
+        .select(['competitor.id', 'competitor.createdAt'])
         .where('competitor.nextPollAt <= now()')
         .orderBy('competitor.nextPollAt', 'ASC')
         .limit(input.limit)
@@ -72,25 +82,30 @@ export class SnapshotQueries {
           jitterRatio: input.jitterRatio,
         })
         .execute();
-      return ids;
+      return due.map(({ id, createdAt }) => ({ id, createdAt }));
     });
   }
 
   /**
    * Compares with the previous snapshot and saves in one transaction. Returns
-   * null when the competitor no longer exists. The competitor row lock makes
+   * null when the competitor no longer exists, or isn't the one that was
+   * claimed, so an old fetch can't enter a new history. The competitor row lock makes
    * concurrent saves take turns, and each one's previous snapshot is the save
    * that went before it.
    */
   saveSnapshot(input: SaveSnapshotInput): Promise<SavedSnapshot | null> {
-    const { competitorId, listing, fetchedAt } = input;
+    const { competitorId, listing, fetchedAt, claimedCreatedAt } = input;
     return this.dataSource.transaction(async (tx) => {
       const competitor = await tx.findOne(Competitor, {
         where: { id: competitorId },
-        select: { id: true },
+        select: { id: true, createdAt: true },
         lock: { mode: 'pessimistic_write' },
       });
-      if (competitor === null) {
+      if (
+        competitor === null ||
+        (claimedCreatedAt !== undefined &&
+          competitor.createdAt.getTime() !== claimedCreatedAt.getTime())
+      ) {
         return null;
       }
 

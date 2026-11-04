@@ -309,6 +309,38 @@ describe('PollWorker', () => {
       expect(save).toHaveBeenCalledTimes(2);
     });
 
+    it('drops a fetch when the competitor is deleted and re-added during it', async () => {
+      await addCompetitors('acme');
+      const { worker, source } = fixtureWorker();
+      await worker.check();
+      await makeAllDue();
+      const racing: ListingSource = {
+        isKnown: () => source.isKnown('acme'),
+        fetchListing: async (id) => {
+          const fetched = await source.fetchListing(id);
+          await dataSource.query(`DELETE FROM competitors WHERE id = $1`, [id]);
+          await dataSource.query(
+            // Not due, or this worker would claim it again and re-add it forever.
+            `INSERT INTO competitors (id, created_at, next_poll_at)
+             VALUES ($1, now() + interval '1 minute', now() + interval '1 hour')`,
+            [id],
+          );
+          return fetched;
+        },
+      };
+
+      await new PollWorker(queries, racing, CONFIG).check();
+
+      // The delete removed the first snapshot, and the old fetch adds nothing.
+      expect(await snapshots()).toHaveLength(0);
+
+      await makeAllDue();
+      await worker.check();
+
+      const rows = await snapshots();
+      expect(rows.map((row) => [row.price, row.changed])).toEqual([['v1', false]]);
+    });
+
     it('does not create a false change after a restart', async () => {
       await addCompetitors('acme');
 

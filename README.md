@@ -100,6 +100,7 @@ There's no Redis or BullMQ: Postgres is both the store and the work queue, so a 
 - The first snapshot has nothing to compare with, so it counts as unchanged and makes no LLM call.
 - A competitor is due immediately after it's added.
 - Removing a competitor deletes its snapshots and position, so adding it again starts at version 1.
+- Removing a competitor during a poll drops that poll's result, even if the competitor is added again before the poll finishes.
 - A competitor id is 1 to 100 lowercase letters, digits and single hyphens, and must exist in the fixtures.
 - As the brief allows, there are no user accounts or auth.
 
@@ -113,7 +114,9 @@ Swagger UI is at `/api/docs`, and its document at `/api/docs-json`. The committe
 | `POST /api/competitors` with `{ "id": string }` | 201, `{ "id": string }` | 400 malformed id, 409 already tracked, 422 unknown to the source |
 | `DELETE /api/competitors/:id` | 204 | 404 not tracked |
 | `GET /api/competitors/:id/snapshots` | 200, snapshots newest first | 400 invalid `limit`, 404 not tracked |
-| `GET /healthz` | 200, `{ "status": "ok" }` | 503, `{ "status": "unavailable" }` if Postgres is unreachable |
+| `GET /healthz` | 200, `{ "status": "ok" }` | 503, `{ "status": "unavailable" }` if Postgres is unreachable or doesn't answer within 2 seconds |
+
+The `/api/competitors` endpoints also answer 503 while Postgres is unavailable, and 500 for any other unexpected error.
 
 **Added beyond the brief:**
 - `summaryStatus` (`none`, `pending`, `done` or `failed`), `summaryProvider` and `summaryModel` on `Snapshot`.
@@ -161,7 +164,7 @@ The Vite dev server proxies `/api` and `/healthz` to `http://localhost:3000`, so
 | `npm run test:unit` (also `npm test`) | Server and web unit tests | Nothing |
 | `npm run test:integration` | Integration tests, on a throwaway `postgres:16` from Testcontainers | Docker, `python3` |
 | `npm run test:all` | Types, lint, unit and integration tests | Docker, `python3` |
-| `npm run test:compose` | The full compose stack from a temporary copy of the repo, using only `.env.example`. Takes a few minutes and isn't part of `test:all` or CI | Docker |
+| `npm run test:compose` | The full compose stack from a temporary copy of the repo, using only `.env.example`: restarts, a stop during an LLM call, a crash-style exit and a Postgres outage. Takes a few minutes and isn't part of `test:all`. CI runs it as its own job | Docker |
 | `npm run typecheck`, `npm run lint` | Each check alone | Nothing |
 
 Tests never touch your dev database or your `.env`.
@@ -224,22 +227,19 @@ The brief's scale, a few hundred competitors polled every 15 minutes, is about 0
 **Behaviour**
 - The prompt caps each listing field at 2,000 characters, so a change past the cap is detected and stored but the LLM can't see it, and its summary may be vague or wrong. The stub's fields are far shorter, so this can't happen today. A real fetcher should send an excerpt around the change.
 - A slow LLM call holds its batch: the next claim waits for the whole batch, for up to the 30-second timeout.
-- Deleting and re-adding a competitor during a poll could save a stale version into the new history. The window is narrow and has no test.
-- `/healthz` has no timeout of its own, so a Postgres host that never answers could leave the request hanging. The compose healthcheck sets its own.
-- While Postgres is down, endpoints other than `/healthz` return a generic 500, not a 503.
-- The web app trusts its generated types at run time, so a response that breaks the spec reaches the UI unchecked. A hung request pauses that timeline's refetching until the browser gives up.
-- Remove has no confirmation, although it deletes the competitor's history.
+- The web app trusts its generated types at run time, so a response that breaks the spec reaches the UI unchecked.
+- A web request is abandoned after 15 seconds, so a hung request pauses that timeline's refetching for up to that long.
 - Idle checks log nothing, so a quiet log can look like a stopped worker.
 
 **Not tested**
 - Gemini with a bad key may return 400 rather than 401, which would mark summaries `failed` instead of failing over.
 - More than one app instance under compose, though concurrent claims are tested against real Postgres.
-- The image on linux/amd64: it was built and run only on an arm64 Mac.
-- A stop during an LLM call, and the restart policy after a crash.
+- The restart policy after a hard crash. The compose check makes the process exit on SIGTERM, because a signal sent from inside can't SIGKILL PID 1, and `docker kill` counts as a manual stop.
+- A stop during an LLM call that takes longer than the 40-second grace period.
 - The pending and failed badges in a real browser. Web tests cover their text, not their appearance.
 
 **Open**
-- The browser once reported a successful `DELETE` as a failed request. The competitor was removed, it didn't recur, and the cause is unknown.
+- Headless Chromium sometimes reports a successful `DELETE` as failed, with `net::ERR_ABORTED`. The competitor is removed and the UI shows no error. The cause is unknown.
 - 32 low and moderate `npm audit` findings remain in dev tooling and are accepted. The production image has no dev dependencies.
 
 ## AI tools used

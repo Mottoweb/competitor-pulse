@@ -191,7 +191,7 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 - [x] Step 9: shadcn/ui (PR #10)
 - [x] Step 10: Packaging (PR #11)
 - [x] Step 11: README (PR #12)
-- [ ] Step 11a: Known-limit fixes (added by step 11)
+- [x] Step 11a: Known-limit fixes (added by step 11, PR #13)
 - [ ] Step 12: Study doc
 
 ## Implementation log
@@ -463,6 +463,34 @@ Facts later steps need:
 - **DeepSeek:** you confirmed it works, which closes the check left open in steps 7 and 10. It is the only real provider confirmed, and the README says so.
 - **Checked by hand:** the README's instructions were followed from a clean clone, with and without compose, on separate ports. That covered the API status codes, the troubleshooting messages and the Vite proxy, which closes the step 9 gap on the Vite dev server.
 
+**Step 11a**
+
+Deviations:
+
+- **Web confirmation:** a shadcn `AlertDialog`, changed from `window.confirm` in review at your request.
+- **Test changes after the tests commit:** added 503 to the four rows of `openapi.spec.ts` that pin declared status codes, without asking first. Fixed the new stale-save test, which looped forever, so its first failure was a timeout; with the fix removed it then failed on an assertion. Rewrote the list tests for the dialog, with `2e205f4` failing first.
+- **Commit `c64eeff`:** it exists although the call containing it was rejected. That call probably ran anyway, which would also explain two compose runs overlapping and failing with a 409. The rerun alone passed.
+
+Choices made during the step, which the user reviewed at approval:
+
+- `claimDueCompetitors` returns `{ id, createdAt }`, and `saveSnapshot` drops a save whose `created_at` differs, rather than a second query after each claim.
+- `/healthz` allows 2 seconds, below the compose healthcheck's 3. New database connections time out after 5 seconds everywhere.
+- `isDatabaseUnavailable` lists the errors that become a 503, through a global filter. Anything else stays a 500.
+- Web requests are abandoned after 15 seconds.
+- `test:compose` runs in CI as its own job. The README no longer lists linux/amd64 as untested, because of that job.
+
+Facts later steps need:
+
+- **Step 12:** the stale-save check and why millisecond precision is enough, why `/healthz` needs its own limit, the 503 filter, and how the stop and restart checks work. The restart check uses SIGTERM, because a signal sent from inside can't SIGKILL PID 1 and `docker kill` counts as a manual stop.
+- **Running `test:compose`:** two at once collide, because they share a project name.
+- **Checked by hand:** the dialog ran in headless Chromium against a temporary database and the mock, using cached build 1243. Cancel and Escape kept the competitor, confirming removed it, and there were no console errors. `test:compose` last ran before the dialog, which only changes the web app.
+
+Known gaps, accepted at approval:
+
+- **CI at merge:** both CI jobs were still queued, so the new compose job hadn't finished a run. If it fails, the README's linux/amd64 line needs to go back.
+- **Failed `DELETE` report:** Chromium reported the successful `DELETE` as `net::ERR_ABORTED` on both runs. The competitor was removed with no error shown, and the cause is unknown.
+- **Not exercised:** a Postgres host that really never answers, a hard crash, and the web timeout in a real browser.
+
 ## Implementation steps
 
 **Each step is one PR, run with `/plan-step`:** it writes failing tests, implements, verifies, opens a PR and lists what you should check. It merges and ticks the step only after `/plan-step approve`. Later plan changes are made in this file.
@@ -530,7 +558,7 @@ Facts later steps need:
 | `npm run test:unit` (also `npm test`) | `*.spec.ts` | Nothing |
 | `npm run test:integration` | `*.integration.spec.ts` | Docker, `python3` |
 | `npm run test:all` | Types, lint, unit tests, integration tests | Docker, `python3` |
-| `npm run test:compose` | The full compose stack from a clean copy, not part of `test:all` (updated by step 10) | Docker |
+| `npm run test:compose` | The full compose stack from a clean copy, not part of `test:all`; CI runs it as its own job (updated by step 10 and step 11a) | Docker |
 
 Integration tests start a throwaway `postgres:16` on a random port with Testcontainers, so they don't need or touch dev Postgres. Each spec file creates its own database in that container, so spec files can run in parallel.
 

@@ -28,6 +28,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -97,6 +107,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -132,6 +152,16 @@
             }
           },
           "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
             "description": "",
             "content": {
               "application/json": {
@@ -205,6 +235,16 @@
             }
           },
           "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
             "description": "",
             "content": {
               "application/json": {
