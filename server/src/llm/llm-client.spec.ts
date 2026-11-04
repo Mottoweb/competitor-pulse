@@ -9,7 +9,6 @@ const PROMPT = { system: 'be brief', user: 'what changed?' };
 interface Seen {
   path: string;
   auth: string | undefined;
-  apiKey: string | string[] | undefined;
   body: unknown;
 }
 
@@ -66,7 +65,6 @@ describe('SdkLlmClient', () => {
         seen.push({
           path: request.url ?? '',
           auth: request.headers.authorization,
-          apiKey: request.headers['x-api-key'],
           body: JSON.parse(Buffer.concat(chunks).toString()),
         });
         setTimeout(() => {
@@ -173,7 +171,7 @@ describe('SdkLlmClient', () => {
       await expect(client.complete(provider, PROMPT)).resolves.toBe('A summary.');
 
       expect(seen[0]?.path).toBe('/v1/messages');
-      expect(seen[0]?.apiKey).toBe('test-key');
+      expect(seen[0]?.auth).toBe('Bearer test-key');
       expect(seen[0]?.body).toMatchObject({
         model: 'claude-opus-5-5',
         max_tokens: 1000,
