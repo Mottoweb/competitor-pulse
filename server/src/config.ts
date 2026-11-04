@@ -35,3 +35,9 @@ export function parseDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
     logQueries: parsed.NODE_ENV !== 'test' && parsed.NODE_ENV !== 'production',
   };
 }
+
+// Stub.
+export function loadEnvFile(path: string, env: NodeJS.ProcessEnv): void {
+  void path;
+  void env;
+}
