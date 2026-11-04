@@ -177,13 +177,14 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 
 - [x] Step 1: Scaffold (PR #2)
 - [x] Step 2: Postgres layer (PR #3)
-- [ ] Step 3: Postgres review package
+- [x] Step 3: Postgres review package (dropped, PR #4 closed unmerged)
 - [ ] Step 4: Polling
 - [ ] Step 5: Summaries
 - [ ] Step 6: API
 - [ ] Step 7: Frontend
 - [ ] Step 8: Packaging
 - [ ] Step 9: README
+- [ ] Step 10: Study doc
 
 ## Implementation log
 
@@ -234,6 +235,15 @@ Known gaps, accepted at approval:
 - **Lock checks:** removing the lock from `saveSnapshot` makes its concurrency test fail, but the same check was never validly completed for the two claim queries.
 - **`.agents/`:** an untracked `.agents/skills/plan-step/SKILL.md` appeared during this step from outside the session. It isn't committed and still says `npm run verify`.
 
+**Step 3 (dropped)**
+
+You decided the review document wasn't needed, so PR #4 was closed unmerged. Its branch `step/3-postgres-review` is kept as source material for step 10. Facts from its measurements on 1M snapshots:
+
+- **Backward scan confirmed:** the timeline with a `limit` and the previous-snapshot lookup both read `(competitor_id, id)` backward with no sort, so the index doesn't need `DESC`.
+- **Claims:** both claim queries use their intended index, with `LockRows` under `Limit`.
+- **Step 7:** the timeline with no `limit` reads and sorts every row. It took about 4 ms for 3,504 rows, but a year's history is projected at about 15 MB per request, and the UI refetches every 5s. The UI should pass `?limit=`.
+- **Step 8:** a parallel `VACUUM` failed on Docker's default 64 MB `/dev/shm`. Set `shm_size` on the `db` service.
+
 ## Implementation steps
 
 **Each step is one PR, run with `/plan-step`:** it writes failing tests, implements, verifies, opens a PR and lists what you should check. It merges and ticks the step only after `/plan-step approve`. Later plan changes are made in this file.
@@ -248,11 +258,11 @@ Known gaps, accepted at approval:
 
 **When a test fails after implementation, fix the code, not the test.** Tests are never weakened, skipped, deleted or edited just to pass. If a test itself looks wrong against the brief, stop and show you why, and change it only with your agreement.
 
-**Steps with no behaviour of their own:** step 1 has one failing smoke test of the test setup itself. Step 8 starts with a failing script that checks `docker compose up` brings the system to a healthy state and serves the API. Step 3 only adds a review document, generated from the running code, so it has no tests. Step 9 (README) has no tests; instead, its run instructions get followed from a clean checkout.
+**Steps with no behaviour of their own:** step 1 has one failing smoke test of the test setup itself. Step 8 starts with a failing script that checks `docker compose up` brings the system to a healthy state and serves the API. Step 9 (README) has no tests; instead, its run instructions get followed from a clean checkout. Step 10 (study doc) has no tests either.
 
 1. **Scaffold:** npm workspaces (`server`, `web`, `shared`), NestJS project, strict TypeScript and ESLint config, Jest, `npm run test:all`, compose with Postgres, `.gitignore`, the GitHub Actions CI workflow, and remove the committed `.DS_Store` files.
 2. **Postgres layer:** entities, generated migrations and all queries (claim due competitors, save snapshot with diff, claim and complete summaries, read timeline), with integration tests including concurrent claims.
-3. **Postgres review package:** a PR adding `docs/postgres-review.md` with the entities, the generated migration SQL, the SQL TypeORM actually runs, and `EXPLAIN` output for the claim and timeline queries, including whether the timeline uses a backward scan of `(competitor_id, id)`. Generating it needs `.env` and dev Postgres. Nothing further gets built until you've approved it. (updated by step 2)
+3. **Postgres review package:** dropped. See the implementation log.
 4. **Polling:** source stub, poll worker, write retries. Also wires the database into Nest: install `@nestjs/typeorm` 11, register the query classes, and load `.env` in `main.ts`. `app.module.spec.ts` is a unit test that boots `AppModule` with no services, so importing the database there means deciding how that test changes, with your agreement. (updated by step 2)
 5. **Summaries:** LLM providers, failover, summary worker.
 6. **API:** competitor and snapshot endpoints, `/healthz`.
@@ -265,6 +275,7 @@ Known gaps, accepted at approval:
    - Assumptions, scale and production notes, including the Postgres standby.
    - Which real providers were actually tested.
    - AI tools used (Claude Code), as the brief asks.
+10. **Study doc:** a document for you to study so you can defend the design in the interview, kept outside the repo, so step 10 opens no PR: each decision and its alternatives, how the code implements it, and likely interview questions with answers. Explain the Postgres concepts carefully (row locks, `SKIP LOCKED`, transactions, indexes, query plans), and compare them with Redis and BullMQ, which you know better. Reuse the measurements on the `step/3-postgres-review` branch.
 
 ## Verification
 
