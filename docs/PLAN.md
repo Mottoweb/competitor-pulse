@@ -385,7 +385,7 @@ Known gaps, accepted at approval:
 - **No run-time check in the web app:** a response that breaks the spec reaches the UI unchecked, and a 200 with a non-JSON body shows "Could not reach the server".
 - **500 responses** are declared in the spec, but no test checks a real one. The 503 check uses a fake `DataSource`.
 - **Vite dev proxy:** not run in this step. Its config is unchanged apart from removing the alias.
-- **Confidence in the last run:** the merge went ahead on a passing local `test:all`, with CI on the final test fix still running.
+- **CI at merge:** CI passed on the final code (`9d4e8f8`). The merge didn't wait for the runs on the commits after it, which only change this file.
 
 ## Implementation steps
 
