@@ -14,7 +14,8 @@ Most of the grade is backend design: persistence, scheduling and LLM integration
 | Database | Postgres 16, TypeORM through `@nestjs/typeorm`, generated migrations | Durable history and transactions; TypeORM is the standard NestJS pairing and supports `SKIP LOCKED` |
 | Job design | Postgres only, no Redis or BullMQ | 0.33 polls/s doesn't justify a second datastore; the snapshot and its pending summary commit together |
 | LLM | DeepSeek first, failing over to other providers with keys in `.env` | Summaries survive a provider outage, with attempts capped |
-| Frontend | React, Vite, TypeScript, `react-router` | Required by the brief; no styling effort |
+| Frontend | React, Vite, TypeScript, `react-router`, shadcn/ui (step 9) | React is required by the brief. The brief doesn't grade polish, so shadcn/ui is your choice for the demo |
+| API contract | `@nestjs/swagger` with response DTOs; `openapi-typescript` and `openapi-fetch` generate the web client (step 8) | The spec comes from the code and is the one contract between server and web |
 | Packaging | Dockerfile and `docker compose up` | Bonus; one command to run everything |
 
 ## System overview (also goes in the README)
@@ -74,7 +75,7 @@ Everything is TypeScript, including tests, migrations and config.
 
 - **Compiler:** `strict: true` plus `noUncheckedIndexedAccess` and `noImplicitOverride` in server and web.
 - **Lint:** ESLint with type-aware rules, with `no-explicit-any` and the `no-unsafe-*` rules as errors. No `@ts-ignore`; `@ts-expect-error` only in tests, with a reason.
-- **Shared contract:** API types (`Snapshot`, `Competitor`, `SummaryStatus`) live in a `shared/` npm workspace used by both server and web, so a contract change breaks the compile on both sides.
+- **Shared contract:** API types (`Snapshot`, `Competitor`, `SummaryStatus`) live in a `shared/` npm workspace used by both server and web, so a contract change breaks the compile on both sides. Step 8 replaces this: `shared/` is removed, the OpenAPI spec is the contract, and a test fails if the committed spec is out of date. (updated by step 7)
 - **Untrusted data:** env vars, request bodies, fixtures and LLM responses are parsed with `zod`, with types inferred from the schemas. `unknown` is narrowed, never cast.
 - **Database:** prefer typed repository methods. Query builder strings can't be compiler-checked, so integration tests cover them. Raw queries declare an explicit row type.
 - **Closed sets:** statuses and provider names are string-literal unions, with exhaustive `switch` checks.
@@ -86,7 +87,7 @@ Everything is TypeScript, including tests, migrations and config.
 - **Queries:** repositories and the query builder only. No eager or lazy relations, so every query stays visible. Foreign keys are still declared, including `ON DELETE CASCADE`.
 - **Claims:** a short transaction using `setLock('pessimistic_write')`, `setOnLocked('skip_locked')` and `limit`, then a batch `update` with `In(ids)`. It commits before any network call.
 - **Raw SQL:** allowed through `dataSource.query` where the query builder obscures a query, with an explicit row type.
-- **Query logging:** enabled in development, so the real SQL is available for review.
+- **Query logging:** off unless `LOG_SQL=true`, so the normal logs stay readable and the SQL is available on request. (updated by step 7)
 - **Configuration:** the environment is the only source. All five `POSTGRES_*` variables are required everywhere, with no defaults in the code or in compose, and a missing one stops startup. Locally they come from the repo root's `.env` (`cp .env.example .env`); real variables override the file. Integration tests never read `.env`; they use the Testcontainers settings.
 
 ## Schema
@@ -165,8 +166,9 @@ server/src/summarizer/     # check loop, status queries
 server/src/llm/            # provider table, clients, failover
 server/src/health/         # GET /healthz
 server/migrations/
+server/src/web/            # serves the built web app
 web/src/                   # CompetitorList, Timeline, typed api client
-shared/                    # API contract types used by server and web
+shared/                    # API contract types used by server and web, until step 8
 files/                     # provided, unchanged
 .github/workflows/ci.yml
 Dockerfile, docker-compose.yml, .env.example, .gitignore, README.md
@@ -182,10 +184,12 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 - [x] Step 4: Polling (PR #5)
 - [x] Step 5: Summaries (PR #6)
 - [x] Step 6: API (PR #7)
-- [ ] Step 7: Frontend
-- [ ] Step 8: Packaging
-- [ ] Step 9: README
-- [ ] Step 10: Study doc
+- [x] Step 7: Frontend (PR #8)
+- [ ] Step 8: Swagger and generated client
+- [ ] Step 9: shadcn/ui
+- [ ] Step 10: Packaging
+- [ ] Step 11: README
+- [ ] Step 12: Study doc
 
 ## Implementation log
 
@@ -202,7 +206,7 @@ Facts later steps need, and deviations from this plan, added as each step is app
 - **Postgres (updated by step 2):** compose and the migration CLI read `POSTGRES_*` from `.env`, with no defaults. `.env.example` uses port 5432, with user, password and database all `competitor_pulse`.
 - **CI services (updated by step 2):** mock LLM instances on ports 4001 and 4002, which no test uses yet. Integration tests start their own Postgres, so CI no longer has a Postgres service.
 - **`multer` override:** root `package.json` forces `multer` to 2.5.0 because `@nestjs/platform-express` 11.2.8 pins the vulnerable 2.4.0. Remove it once Nest updates the pin. Changing an override also needs the lockfile updated (`npm update multer`), because `npm install` alone left 2.4.0 in place.
-- **Step 8:** 32 low and moderate audit findings remain in dev tooling and are accepted. The Dockerfile's production image must omit dev dependencies.
+- **Step 10:** 32 low and moderate audit findings remain in dev tooling and are accepted. The Dockerfile's production image must omit dev dependencies.
 - **Merge gate:** GitHub doesn't enforce CI, because branch protection is unavailable on this private repo's plan. `/plan-step approve` is the only gate.
 
 **Step 2**
@@ -238,12 +242,12 @@ Known gaps, accepted at approval:
 
 **Step 3 (dropped)**
 
-You decided the review document wasn't needed, so PR #4 was closed unmerged. Its branch `step/3-postgres-review` is kept as source material for step 10. Facts from its measurements on 1M snapshots:
+You decided the review document wasn't needed, so PR #4 was closed unmerged. Its branch `step/3-postgres-review` is kept as source material for step 12. Facts from its measurements on 1M snapshots:
 
 - **Backward scan confirmed:** the timeline with a `limit` and the previous-snapshot lookup both read `(competitor_id, id)` backward with no sort, so the index doesn't need `DESC`.
 - **Claims:** both claim queries use their intended index, with `LockRows` under `Limit`.
 - **Step 7:** the timeline with no `limit` reads and sorts every row. It took about 4 ms for 3,504 rows, but a year's history is projected at about 15 MB per request, and the UI refetches every 5s. The UI should pass `?limit=`.
-- **Step 8:** a parallel `VACUUM` failed on Docker's default 64 MB `/dev/shm`. Set `shm_size` on the `db` service.
+- **Step 10:** a parallel `VACUUM` failed on Docker's default 64 MB `/dev/shm`. Set `shm_size` on the `db` service.
 
 **Step 4**
 
@@ -276,7 +280,7 @@ Choices made during the step, which the user reviewed at approval:
 - An explicit `LLM_MAX_ATTEMPTS` is used as given, even below the provider count.
 - 408 is transient, and any other 4xx outside the failover table is treated like a 400.
 - A bad key retries on the next provider with no delay; transient failures back off from 5s, doubling up to 60s. Cooldowns are 30s and 5 minutes.
-- Fields stay capped at 2,000 characters in the prompt. See the known limit in step 9.
+- Fields stay capped at 2,000 characters in the prompt. See the known limit in step 11.
 
 Facts later steps need:
 
@@ -320,6 +324,35 @@ Known gaps, accepted at approval:
 - **API errors while Postgres is down:** endpoints other than `/healthz` return a generic 500, not a 503.
 - **503 test:** the automated `/healthz` 503 test uses a fake `DataSource`. Only the manual run used a really stopped Postgres.
 
+**Step 7**
+
+Deviations:
+
+- **Query logging:** opt-in through `LOG_SQL=true`, not on in development, because you found the logs unreadable. Polls, summaries, adds, removes and startup each write a plain line instead.
+- **Test change:** `web.integration.spec.ts` boots with `NestFactory.create`, agreed during the step. Under `Test.createTestingModule`, `serve-static` finds no HTTP adapter at compile time and silently uses a no-op loader. The `config.spec.ts` table for query logging was replaced because the behaviour changed.
+- **Layout:** adds `server/src/web/` and `web/src/testing/`.
+
+Choices made during the step, which the user reviewed at approval:
+
+- "Show older" asks for 100 snapshots and adds 100 per click, so the whole history stays reachable.
+- The web app parses responses with `zod`. Step 8 removes this.
+- `WEB_DIST_DIR` overrides where the built web app is served from, so tests can serve a stand-in, because CI doesn't build the web app first.
+- Remove has no confirmation, although it deletes the competitor's history.
+
+Facts later steps need:
+
+- **Step 8:** `web/vite.config.ts` aliases `@competitor-pulse/shared` to its source, because the CommonJS build can't load in the browser. Remove this with `shared/`. `web/src/testing/fake-api.ts` stubs `fetch` with a string URL, and `openapi-fetch` calls it differently, so the stub needs adapting. The "reports a response that breaks the contract" test goes with `zod`. `/api/*` is excluded from static serving, so Swagger UI can live there.
+- **Step 9:** the web tests find elements by role and text, so they should mostly carry over.
+- **Step 10:** the app serves `web/dist`, found relative to `server/dist/src/web`, so the image must build the web app and keep that layout, or set `WEB_DIST_DIR`. From the library's code, a missing build should still boot and return 404 on non-API paths; this hasn't been run.
+- **Step 11:** for development, `npm run start:dev -w @competitor-pulse/server` restarts on source changes, but not on `.env` or `shared` changes. `npm start` runs `dist` once. Document `LOG_SQL`. Checking the DeepSeek result is still open: you reported "all is good" after adding a key, but the run wasn't confirmed from the database.
+- **Checked by hand:** the built app ran against a throwaway Postgres and the mock in headless Chromium, covering add, remove, the 400, 409 and 422 messages, a timeline filling in with no reload, and a deep-link reload. The proxy and alias were checked through Vite. The browser skill's expected Chromium wasn't installed, so this used an older cached build.
+
+Known gaps, accepted at approval:
+
+- **A hung request** pauses that timeline's refetching until the browser gives up, with no client timeout or test.
+- **Idle checks log nothing,** so a quiet log can look like a stopped worker. Each poll logs a line, including `no change`; lower that to debug level in production.
+- **Exclude list:** tests prove the `/api` entry. The `/healthz` entry is unproven, because its controller answers first with or without it.
+
 ## Implementation steps
 
 **Each step is one PR, run with `/plan-step`:** it writes failing tests, implements, verifies, opens a PR and lists what you should check. It merges and ticks the step only after `/plan-step approve`. Later plan changes are made in this file.
@@ -334,7 +367,7 @@ Known gaps, accepted at approval:
 
 **When a test fails after implementation, fix the code, not the test.** Tests are never weakened, skipped, deleted or edited just to pass. If a test itself looks wrong against the brief, stop and show you why, and change it only with your agreement.
 
-**Steps with no behaviour of their own:** step 1 has one failing smoke test of the test setup itself. Step 8 starts with a failing script that checks `docker compose up` brings the system to a healthy state and serves the API. Step 9 (README) has no tests; instead, its run instructions get followed from a clean checkout. Step 10 (study doc) has no tests either.
+**Steps with no behaviour of their own:** step 1 has one failing smoke test of the test setup itself. Step 10 starts with a failing script that checks `docker compose up` brings the system to a healthy state and serves the API. Step 11 (README) has no tests; instead, its run instructions get followed from a clean checkout. Step 12 (study doc) has no tests either.
 
 1. **Scaffold:** npm workspaces (`server`, `web`, `shared`), NestJS project, strict TypeScript and ESLint config, Jest, `npm run test:all`, compose with Postgres, `.gitignore`, the GitHub Actions CI workflow, and remove the committed `.DS_Store` files.
 2. **Postgres layer:** entities, generated migrations and all queries (claim due competitors, save snapshot with diff, claim and complete summaries, read timeline), with integration tests including concurrent claims.
@@ -343,8 +376,10 @@ Known gaps, accepted at approval:
 5. **Summaries:** LLM providers, failover, summary worker.
 6. **API:** competitor and snapshot endpoints, `/healthz`. API tests that boot `AppModule` need the provider setup described in the step 5 log. (updated by step 5)
 7. **Frontend:** both views, served by NestJS (`@nestjs/serve-static`) with a Vite proxy in development. Show the API's `message` field for errors, and pass `?limit=` on the timeline. Exclude `/api` and `/healthz` from static serving. (updated by step 6)
-8. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies. The production image has no dev dependencies, so the migrate service must run the compiled `dist/migrations` without `ts-node`, using a compiled data source. Compose needs `.env`, so `docker compose up` from a clean checkout needs `cp .env.example .env` first. The image must include `files/fixtures/listings.json` at the same path relative to `server/dist`, because the stub reads it at startup. The app needs a provider key to start, so compose sets `MOCK_API_KEY` and points `MOCK_BASE_URL` at the mock-llm service. Set `stop_grace_period` above the 30s LLM timeout, so a stop can finish calls in progress. An app healthcheck on `/healthz` must set its own timeout, because the endpoint has none. (updated by step 2, step 4, step 5 and step 6)
-9. **README:**
+8. **Swagger and generated client:** `@nestjs/swagger` with response DTO classes that `implements` the contract, Swagger UI under `/api`, and a committed spec file. `openapi-typescript` and `openapi-fetch` generate the web client's types and requests. Tests: real responses are checked against the spec, and a test fails if the committed spec is out of date. Remove `shared/` (server types move into the server) and `zod` from the web app, including the Vite alias. Chosen after comparing `nestjs-zod` and a hand-written spec, and Orval and Hey API. (added by step 7)
+9. **shadcn/ui:** add Tailwind and shadcn/ui, and restyle both views. Behaviour doesn't change, so the existing web tests are the check, with any test change explained. (added by step 7)
+10. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies. The production image has no dev dependencies, so the migrate service must run the compiled `dist/migrations` without `ts-node`, using a compiled data source. Compose needs `.env`, so `docker compose up` from a clean checkout needs `cp .env.example .env` first. The image must include `files/fixtures/listings.json` at the same path relative to `server/dist`, because the stub reads it at startup. The app needs a provider key to start, so compose sets `MOCK_API_KEY` and points `MOCK_BASE_URL` at the mock-llm service. Set `stop_grace_period` above the 30s LLM timeout, so a stop can finish calls in progress. An app healthcheck on `/healthz` must set its own timeout, because the endpoint has none. (updated by step 2, step 4, step 5 and step 6)
+11. **README:**
    - Install, build and run, with and without compose, including `cp .env.example .env` as a required first step.
    - The system overview above.
    - LLM setup, including running against the mock; config table.
@@ -352,7 +387,7 @@ Known gaps, accepted at approval:
    - Known limit: the prompt caps each listing field at 2,000 characters, so a change past the cap is detected and stored but the LLM can't see it, and its summary may be vague or wrong. The stub's fields are far shorter, so this can't happen today; a real fetcher should send an excerpt around the change. (updated by step 5)
    - Which real providers were actually tested.
    - AI tools used (Claude Code), as the brief asks.
-10. **Study doc:** a document for you to study so you can defend the design in the interview, kept outside the repo, so step 10 opens no PR: each decision and its alternatives, how the code implements it, and likely interview questions with answers. Explain the Postgres concepts carefully (row locks, `SKIP LOCKED`, transactions, indexes, query plans), and compare them with Redis and BullMQ, which you know better. Reuse the measurements on the `step/3-postgres-review` branch.
+12. **Study doc:** a document for you to study so you can defend the design in the interview, kept outside the repo, so step 12 opens no PR: each decision and its alternatives, how the code implements it, and likely interview questions with answers. Explain the Postgres concepts carefully (row locks, `SKIP LOCKED`, transactions, indexes, query plans), and compare them with Redis and BullMQ, which you know better. Reuse the measurements on the `step/3-postgres-review` branch. Include the step 8 and step 9 choices.
 
 ## Verification
 
