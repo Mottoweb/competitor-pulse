@@ -7,7 +7,12 @@ import './postgres-container';
  * Testcontainers' reaper removes the container.
  */
 export default async function setup(): Promise<void> {
-  const container = await new PostgreSqlContainer('postgres:16').start();
+  // Each DROP DATABASE forces a checkpoint, and spec files run in parallel, so
+  // drops queue behind each other past Jest's hook timeout. This data is
+  // thrown away, so it doesn't need fsync's protection against a power cut.
+  const container = await new PostgreSqlContainer('postgres:16')
+    .withCommand(['postgres', '-c', 'fsync=off'])
+    .start();
   globalThis.__postgresContainer = container;
 
   process.env.POSTGRES_HOST = container.getHost();
