@@ -494,8 +494,11 @@ describe('SummaryWorker', () => {
     it('survives a failed save, and the row comes back after its retry time', async () => {
       await addPending('acme');
       const worker = realWorker();
+      // The first try and both of its retries.
       jest
         .spyOn(queries, 'completeSummary')
+        .mockRejectedValueOnce(new Error('connection lost'))
+        .mockRejectedValueOnce(new Error('connection lost'))
         .mockRejectedValueOnce(new Error('connection lost'));
 
       await expect(worker.check()).resolves.toBeUndefined();

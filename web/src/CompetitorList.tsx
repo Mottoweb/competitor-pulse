@@ -49,18 +49,25 @@ export function CompetitorList(): ReactElement {
     };
   }, []);
 
-  /** Runs a change, then shows the list as the server now has it. */
+  /**
+   * Runs a change, then shows the list as the server now has it, even after a
+   * failure: a timed-out remove may still have happened on the server.
+   */
   async function change(action: () => Promise<void>): Promise<void> {
     setBusy(true);
+    let message: string | null = null;
     try {
       await action();
-      setCompetitors(await listCompetitors());
-      setError(null);
     } catch (changeError) {
-      setError(errorMessage(changeError));
-    } finally {
-      setBusy(false);
+      message = errorMessage(changeError);
     }
+    try {
+      setCompetitors(await listCompetitors());
+    } catch (listError) {
+      message ??= errorMessage(listError);
+    }
+    setError(message);
+    setBusy(false);
   }
 
   function handleAdd(event: FormEvent): void {

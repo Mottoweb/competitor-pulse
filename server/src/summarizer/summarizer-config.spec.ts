@@ -10,6 +10,7 @@ describe('parseSummarizerConfig', () => {
       backoffBaseSeconds: 5,
       backoffMaxSeconds: 60,
       maxAttempts: 3,
+      saveRetryDelaysMs: [100, 500],
     });
   });
 
