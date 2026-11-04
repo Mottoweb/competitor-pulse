@@ -8,11 +8,13 @@
     "start": "node dist/src/main.js",
     "start:dev": "nest start --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "jest",
+    "test": "npm run test:unit",
     "typeorm": "typeorm-ts-node-commonjs -d src/database/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate -p",
     "migration:run": "npm run typeorm -- migration:run",
-    "migration:revert": "npm run typeorm -- migration:revert"
+    "migration:revert": "npm run typeorm -- migration:revert",
+    "test:unit": "jest",
+    "test:integration": "jest --config jest.integration.config.ts"
   },
   "dependencies": {
     "@competitor-pulse/shared": "0.0.0",
@@ -28,10 +30,12 @@
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@nestjs/testing": "^11.1.0",
+    "@testcontainers/postgresql": "^12.2.1",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
     "jest": "^30.0.0",
+    "testcontainers": "^12.2.1",
     "ts-jest": "^29.4.0",
     "ts-node": "^10.9.2"
   }
