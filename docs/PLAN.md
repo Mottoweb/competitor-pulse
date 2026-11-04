@@ -178,7 +178,7 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 - [x] Step 1: Scaffold (PR #2)
 - [x] Step 2: Postgres layer (PR #3)
 - [x] Step 3: Postgres review package (dropped, PR #4 closed unmerged)
-- [ ] Step 4: Polling
+- [x] Step 4: Polling (PR #5)
 - [ ] Step 5: Summaries
 - [ ] Step 6: API
 - [ ] Step 7: Frontend
@@ -244,6 +244,21 @@ You decided the review document wasn't needed, so PR #4 was closed unmerged. Its
 - **Step 7:** the timeline with no `limit` reads and sorts every row. It took about 4 ms for 3,504 rows, but a year's history is projected at about 15 MB per request, and the UI refetches every 5s. The UI should pass `?limit=`.
 - **Step 8:** a parallel `VACUUM` failed on Docker's default 64 MB `/dev/shm`. Set `shm_size` on the `db` service.
 
+**Step 4**
+
+Deviations:
+
+- **Module boot test:** `app.module.spec.ts` became `app.module.integration.spec.ts`, because booting `AppModule` now needs Postgres. Its assertions are unchanged, with one new test added.
+- **`fsync=off` on the test container:** `DROP DATABASE` checkpoints queued past Jest's 5s hook timeout with more spec files. This only affects the throwaway Testcontainers Postgres.
+
+Facts later steps need:
+
+- **Registered modules:** `DatabaseModule`, `PollerModule` (exports `SnapshotQueries`) and `SummarizerModule` (exports `SummaryQueries`). `SummarizerModule` holds only the queries so far.
+- **`.env` loading:** `main.ts` loads the repo root's `.env` before creating the app, so settings read in Nest factories can use `process.env`.
+- **Worker pattern for step 5:** `PollWorker.check()` never rejects and joins a check already running. It starts in `onApplicationBootstrap`, and waits in `beforeApplicationShutdown`, because the database closes in the later shutdown hook. Tests call `check()` directly and pass config in, so they don't sleep.
+- **Step 6:** `ListingSource` only has `fetchListing`, so the 422 for an id the source doesn't know needs a new method on it.
+- **Port:** 3000 is still hardcoded in `main.ts`.
+
 ## Implementation steps
 
 **Each step is one PR, run with `/plan-step`:** it writes failing tests, implements, verifies, opens a PR and lists what you should check. It merges and ticks the step only after `/plan-step approve`. Later plan changes are made in this file.
@@ -267,7 +282,7 @@ You decided the review document wasn't needed, so PR #4 was closed unmerged. Its
 5. **Summaries:** LLM providers, failover, summary worker.
 6. **API:** competitor and snapshot endpoints, `/healthz`.
 7. **Frontend:** both views, served by NestJS (`@nestjs/serve-static`) with a Vite proxy in development.
-8. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies. The production image has no dev dependencies, so the migrate service must run the compiled `dist/migrations` without `ts-node`, using a compiled data source. Compose needs `.env`, so `docker compose up` from a clean checkout needs `cp .env.example .env` first. (updated by step 2)
+8. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies. The production image has no dev dependencies, so the migrate service must run the compiled `dist/migrations` without `ts-node`, using a compiled data source. Compose needs `.env`, so `docker compose up` from a clean checkout needs `cp .env.example .env` first. The image must include `files/fixtures/listings.json` at the same path relative to `server/dist`, because the stub reads it at startup. (updated by step 2 and step 4)
 9. **README:**
    - Install, build and run, with and without compose, including `cp .env.example .env` as a required first step.
    - The system overview above.
