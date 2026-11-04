@@ -87,6 +87,7 @@ Everything is TypeScript, including tests, migrations and config.
 - **Claims:** a short transaction using `setLock('pessimistic_write')`, `setOnLocked('skip_locked')` and `limit`, then a batch `update` with `In(ids)`. It commits before any network call.
 - **Raw SQL:** allowed through `dataSource.query` where the query builder obscures a query, with an explicit row type.
 - **Query logging:** enabled in development, so the real SQL is available for review.
+- **Configuration:** the environment is the only source. All five `POSTGRES_*` variables are required everywhere, with no defaults in the code or in compose, and a missing one stops startup. Locally they come from the repo root's `.env` (`cp .env.example .env`); real variables override the file. Integration tests never read `.env`; they use the Testcontainers settings.
 
 ## Schema
 
@@ -196,7 +197,7 @@ Facts later steps need, and deviations from this plan, added as each step is app
 - **Step 7:** `web` imports only types from `shared` so far. Importing a runtime value may need a Vite alias to `shared/src`, which hasn't been tested.
 - **Jest doesn't type-check:** `isolatedModules` makes `ts-jest` transpile only, so type errors in specs are caught by `npm run typecheck`.
 - **Port 3000 is hardcoded** in `server/src/main.ts`. Replace it when the `zod` config module arrives.
-- **Postgres:** compose uses host port 5432, overridable with `POSTGRES_PORT`. User, password and database are all `competitor_pulse`, locally and in CI.
+- **Postgres (updated by step 2):** compose and the migration CLI read `POSTGRES_*` from `.env`, with no defaults. `.env.example` uses port 5432, with user, password and database all `competitor_pulse`.
 - **CI services (updated by step 2):** mock LLM instances on ports 4001 and 4002, which no test uses yet. Integration tests start their own Postgres, so CI no longer has a Postgres service.
 - **`multer` override:** root `package.json` forces `multer` to 2.5.0 because `@nestjs/platform-express` 11.2.8 pins the vulnerable 2.4.0. Remove it once Nest updates the pin. Changing an override also needs the lockfile updated (`npm update multer`), because `npm install` alone left 2.4.0 in place.
 - **Step 8:** 32 low and moderate audit findings remain in dev tooling and are accepted. The Dockerfile's production image must omit dev dependencies.
@@ -227,7 +228,7 @@ Facts later steps need, and deviations from this plan, added as each step is app
 7. **Frontend:** both views, served by NestJS (`@nestjs/serve-static`) with a Vite proxy in development.
 8. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies.
 9. **README:**
-   - Install, build and run, with and without compose.
+   - Install, build and run, with and without compose, including `cp .env.example .env` as a required first step.
    - The system overview above.
    - LLM setup, including running against the mock; config table.
    - Assumptions, scale and production notes, including the Postgres standby.

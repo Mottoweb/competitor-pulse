@@ -2,20 +2,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 import { z } from 'zod';
 
-const REQUIRED_IN_PRODUCTION = [
-  'POSTGRES_HOST',
-  'POSTGRES_PORT',
-  'POSTGRES_USER',
-  'POSTGRES_PASSWORD',
-  'POSTGRES_DB',
-] as const;
-
+// Every setting is required. There are no defaults, so a missing value stops
+// startup instead of quietly connecting somewhere unintended.
 const databaseEnvSchema = z.object({
-  POSTGRES_HOST: z.string().min(1).default('localhost'),
-  POSTGRES_PORT: z.coerce.number().int().min(1).max(65535).default(5432),
-  POSTGRES_USER: z.string().min(1).default('competitor_pulse'),
-  POSTGRES_PASSWORD: z.string().min(1).default('competitor_pulse'),
-  POSTGRES_DB: z.string().min(1).default('competitor_pulse'),
+  POSTGRES_HOST: z.string().min(1),
+  POSTGRES_PORT: z.coerce.number().int().min(1).max(65535),
+  POSTGRES_USER: z.string().min(1),
+  POSTGRES_PASSWORD: z.string().min(1),
+  POSTGRES_DB: z.string().min(1),
   NODE_ENV: z.string().optional(),
 });
 
@@ -29,17 +23,6 @@ export interface DatabaseConfig {
 }
 
 export function parseDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
-  if (env.NODE_ENV === 'production') {
-    // The defaults are for local development. Production must not fall back to them.
-    const missing = REQUIRED_IN_PRODUCTION.filter(
-      (name) => env[name] === undefined,
-    );
-    if (missing.length > 0) {
-      throw new Error(
-        `Missing database configuration in production: ${missing.join(', ')}`,
-      );
-    }
-  }
   const result = databaseEnvSchema.safeParse(env);
   if (!result.success) {
     // Names the invalid settings without echoing their values, which may be secret.
