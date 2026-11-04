@@ -1,5 +1,4 @@
 import 'reflect-metadata';
-import { SUMMARY_STATUSES } from '@competitor-pulse/shared';
 import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { DataSource } from 'typeorm';
@@ -49,13 +48,12 @@ describe('test setup', () => {
     jest.restoreAllMocks();
   });
 
-  it('runs TypeScript, boots the Nest module and loads the shared workspace at runtime', async () => {
+  it('runs TypeScript and boots the Nest module', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
     expect(moduleRef.get(AppModule)).toBeInstanceOf(AppModule);
-    expect(SUMMARY_STATUSES).toEqual(['none', 'pending', 'done', 'failed']);
 
     await moduleRef.close();
   });

@@ -1,9 +1,9 @@
-import type { Competitor } from '@competitor-pulse/shared';
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { Link } from 'react-router';
 import {
   addCompetitor,
   errorMessage,
+  type Competitor,
   listCompetitors,
   removeCompetitor,
 } from './api';

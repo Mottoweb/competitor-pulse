@@ -1,7 +1,6 @@
-import type { Snapshot } from '@competitor-pulse/shared';
 import { useEffect, useState, type ReactElement } from 'react';
 import { Link, useParams } from 'react-router';
-import { errorMessage, listSnapshots } from './api';
+import { errorMessage, listSnapshots, type Snapshot } from './api';
 
 const REFETCH_MS = 5000;
 // The API returns full history without a limit, which would grow without bound

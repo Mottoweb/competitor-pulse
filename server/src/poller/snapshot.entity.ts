@@ -1,4 +1,3 @@
-import { SUMMARY_STATUSES, type SummaryStatus } from '@competitor-pulse/shared';
 import {
   Column,
   Entity,
@@ -8,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Competitor } from '../competitors/competitor.entity';
+import { SUMMARY_STATUSES, type SummaryStatus } from '../competitors/contract';
 
 @Entity({ name: 'snapshots' })
 @Index('snapshots_competitor_id_id_idx', ['competitorId', 'id'])

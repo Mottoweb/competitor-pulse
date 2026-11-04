@@ -22,9 +22,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build shared contract
-        run: npm run build:shared
-
       - name: Types
         run: npm run typecheck
 

@@ -3,6 +3,11 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+// Without this limit, an unknown API path would answer 200 with the app's HTML.
+// Not serve-static's `exclude` option: its error handler answers 404 to any error
+// on an excluded path, which turned the 400 for malformed JSON into a 404.
+const APP_ROUTES = /^(?!\/api(?:\/|$)|\/healthz\/?$)/;
+
 function resolveWebRoot(env: NodeJS.ProcessEnv): string {
   if (env.WEB_DIST_DIR !== undefined) {
     return env.WEB_DIST_DIR;
@@ -20,8 +25,7 @@ function resolveWebRoot(env: NodeJS.ProcessEnv): string {
       useFactory: () => [
         {
           rootPath: resolveWebRoot(process.env),
-          // Without this, an unknown API path would answer 200 with the app's HTML.
-          exclude: ['/api{/*path}', '/healthz'],
+          renderPath: APP_ROUTES,
         },
       ],
     }),

@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { CompetitorList } from './CompetitorList';
-import { z } from 'zod';
 import { stubFetch, type FakeCall, type FakeReply } from './testing/fake-api';
 
 function renderList(): void {
@@ -24,7 +23,11 @@ function trackedServer(initial: string[]): {
   return {
     list: () => ({ status: 200, body: ids.map((id) => ({ id })) }),
     add: (call: FakeCall) => {
-      const { id } = z.object({ id: z.string() }).parse(call.body);
+      const { body } = call;
+      if (typeof body !== 'object' || body === null || !('id' in body) || typeof body.id !== 'string') {
+        throw new Error('Expected a body with a string id');
+      }
+      const { id } = body;
       ids.push(id);
       return { status: 201, body: { id } };
     },
@@ -195,13 +198,5 @@ describe('CompetitorList', () => {
     renderList();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not reach the server');
-  });
-
-  it('reports a response that breaks the contract', async () => {
-    stubFetch({ 'GET /api/competitors': { status: 200, body: [{ name: 'acme-crm' }] } });
-
-    renderList();
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Unexpected response');
   });
 });

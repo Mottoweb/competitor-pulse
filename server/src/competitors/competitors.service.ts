@@ -1,7 +1,3 @@
-import type {
-  Competitor as CompetitorContract,
-  Snapshot as SnapshotContract,
-} from '@competitor-pulse/shared';
 import {
   ConflictException,
   Inject,
@@ -16,14 +12,20 @@ import { SnapshotQueries } from '../poller/snapshot-queries';
 import type { Snapshot } from '../poller/snapshot.entity';
 import { LISTING_SOURCE, type ListingSource } from '../source/listing-source';
 import { Competitor } from './competitor.entity';
+import {
+  COMPETITOR_ID_MAX_LENGTH,
+  COMPETITOR_ID_PATTERN,
+  type Competitor as CompetitorContract,
+  type Snapshot as SnapshotContract,
+} from './contract';
 
 const ID_RULE =
   'id must be 1 to 100 lowercase letters, digits and single hyphens, like acme-crm';
 
 const competitorIdSchema = z
   .string({ error: ID_RULE })
-  .max(100, ID_RULE)
-  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, ID_RULE);
+  .max(COMPETITOR_ID_MAX_LENGTH, ID_RULE)
+  .regex(COMPETITOR_ID_PATTERN, ID_RULE);
 
 export const addCompetitorSchema = z.object(
   { id: competitorIdSchema },
