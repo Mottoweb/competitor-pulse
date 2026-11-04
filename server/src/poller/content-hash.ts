@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Listing } from '../source/listing';
 
-function normalise(text: string): string {
+export function normalise(text: string): string {
   return text.trim().replace(/\s+/g, ' ');
 }
 
