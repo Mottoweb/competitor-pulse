@@ -163,6 +163,7 @@ server/src/source/         # ListingSource interface + fixture stub, cursor enti
 server/src/poller/         # check loop, Snapshot entity and queries
 server/src/summarizer/     # check loop, status queries
 server/src/llm/            # provider table, clients, failover
+server/src/health/         # GET /healthz
 server/migrations/
 web/src/                   # CompetitorList, Timeline, typed api client
 shared/                    # API contract types used by server and web
@@ -180,7 +181,7 @@ Managed by `/plan-step`. A step is ticked only when you run `/plan-step approve`
 - [x] Step 3: Postgres review package (dropped, PR #4 closed unmerged)
 - [x] Step 4: Polling (PR #5)
 - [x] Step 5: Summaries (PR #6)
-- [ ] Step 6: API
+- [x] Step 6: API (PR #7)
 - [ ] Step 7: Frontend
 - [ ] Step 8: Packaging
 - [ ] Step 9: README
@@ -290,6 +291,35 @@ Known gaps, accepted at approval:
 - **Gemini with a bad key** may return 400 rather than 401, which would mark summaries `failed` instead of failing over. This is untested.
 - **A slow call holds its batch:** the next claim waits for the whole batch, for up to the 30s timeout.
 
+**Step 6**
+
+Deviations:
+
+- **Health folder:** `GET /healthz` lives in `server/src/health/`, which the layout above didn't list.
+- **Test doubles:** the two `ListingSource` doubles in `poll-worker.integration.spec.ts` gained `isKnown` in the tests commit, because the interface grew.
+
+Choices made during the step, which the user reviewed at approval:
+
+- A competitor id is 1 to 100 lowercase letters, digits and single hyphens. A malformed id gets 400 on POST and 404 on DELETE and GET snapshots.
+- `?limit=` is a positive integer with no upper limit. An invalid value gets 400.
+- POST returns `{ "id": ... }`, and `GET /api/competitors` sorts by id.
+- `/healthz` returns `{ "status": "ok" }`, or 503 with `{ "status": "unavailable" }`. The error goes to the log, not the response.
+
+Facts later steps need:
+
+- **Errors:** responses use Nest's default shape, `{ message, error, statusCode }`, and `message` is written to be shown to the user. `shared` has no type for this yet.
+- **No snapshot id in the API:** `Snapshot` has no `id` field, so the timeline needs another React key, such as `fetchedAt`.
+- **Port:** `PORT` sets the port, defaulting to 3000. `.env.example` lists it.
+- **API tests:** they set `CHECK_INTERVAL_SECONDS=3600` so the worker timers stay quiet, and call `check()` directly.
+- **Checked by hand:** the built app ran against a throwaway Postgres and the mock. With Postgres stopped, `/healthz` returned 503 and the list returned 500; both returned 200 once it was back.
+
+Known gaps, accepted at approval:
+
+- **Unresponsive Postgres:** `/healthz` has no timeout of its own, so a host that never answers could leave the request hanging.
+- **Delete and re-add during a poll:** a fetch already in progress could save a stale version into the new history. The window is narrow and has no test.
+- **API errors while Postgres is down:** endpoints other than `/healthz` return a generic 500, not a 503.
+- **503 test:** the automated `/healthz` 503 test uses a fake `DataSource`. Only the manual run used a really stopped Postgres.
+
 ## Implementation steps
 
 **Each step is one PR, run with `/plan-step`:** it writes failing tests, implements, verifies, opens a PR and lists what you should check. It merges and ticks the step only after `/plan-step approve`. Later plan changes are made in this file.
@@ -312,8 +342,8 @@ Known gaps, accepted at approval:
 4. **Polling:** source stub, poll worker, write retries. Also wires the database into Nest: install `@nestjs/typeorm` 11, register the query classes, and load `.env` in `main.ts`. `app.module.spec.ts` is a unit test that boots `AppModule` with no services, so importing the database there means deciding how that test changes, with your agreement. (updated by step 2)
 5. **Summaries:** LLM providers, failover, summary worker.
 6. **API:** competitor and snapshot endpoints, `/healthz`. API tests that boot `AppModule` need the provider setup described in the step 5 log. (updated by step 5)
-7. **Frontend:** both views, served by NestJS (`@nestjs/serve-static`) with a Vite proxy in development.
-8. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies. The production image has no dev dependencies, so the migrate service must run the compiled `dist/migrations` without `ts-node`, using a compiled data source. Compose needs `.env`, so `docker compose up` from a clean checkout needs `cp .env.example .env` first. The image must include `files/fixtures/listings.json` at the same path relative to `server/dist`, because the stub reads it at startup. The app needs a provider key to start, so compose sets `MOCK_API_KEY` and points `MOCK_BASE_URL` at the mock-llm service. Set `stop_grace_period` above the 30s LLM timeout, so a stop can finish calls in progress. (updated by step 2, step 4 and step 5)
+7. **Frontend:** both views, served by NestJS (`@nestjs/serve-static`) with a Vite proxy in development. Show the API's `message` field for errors, and pass `?limit=` on the timeline. Exclude `/api` and `/healthz` from static serving. (updated by step 6)
+8. **Packaging:** Dockerfile, and compose with db, a one-shot migrate service, mock-llm and app, including restart policies. The production image has no dev dependencies, so the migrate service must run the compiled `dist/migrations` without `ts-node`, using a compiled data source. Compose needs `.env`, so `docker compose up` from a clean checkout needs `cp .env.example .env` first. The image must include `files/fixtures/listings.json` at the same path relative to `server/dist`, because the stub reads it at startup. The app needs a provider key to start, so compose sets `MOCK_API_KEY` and points `MOCK_BASE_URL` at the mock-llm service. Set `stop_grace_period` above the 30s LLM timeout, so a stop can finish calls in progress. An app healthcheck on `/healthz` must set its own timeout, because the endpoint has none. (updated by step 2, step 4, step 5 and step 6)
 9. **README:**
    - Install, build and run, with and without compose, including `cp .env.example .env` as a required first step.
    - The system overview above.

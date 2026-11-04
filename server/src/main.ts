@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { join } from 'node:path';
 import { AppModule } from './app.module';
-import { loadEnvFile } from './config';
+import { loadEnvFile, parseServerPort } from './config';
 
 async function bootstrap(): Promise<void> {
   // The repo root's .env, from server/dist/src. Real variables win over the file,
@@ -11,7 +11,7 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   // Lets a stop signal finish the check in progress before the database closes.
   app.enableShutdownHooks();
-  await app.listen(3000);
+  await app.listen(parseServerPort(process.env));
 }
 
 void bootstrap();

@@ -10,6 +10,8 @@ export interface FetchedListing {
 /** What the poller reads from. A real fetcher can replace the fixture stub here. */
 export interface ListingSource {
   fetchListing(competitorId: string): Promise<FetchedListing>;
+  /** Whether this source has a listing for the id at all. */
+  isKnown(competitorId: string): Promise<boolean>;
 }
 
 export const LISTING_SOURCE = Symbol('LISTING_SOURCE');

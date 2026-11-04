@@ -38,6 +38,11 @@ export class FixtureListingSource implements ListingSource {
     private readonly fixtures: Fixtures,
   ) {}
 
+  isKnown(competitorId: string): Promise<boolean> {
+    // hasOwn, because ids like "constructor" exist on every plain object.
+    return Promise.resolve(Object.hasOwn(this.fixtures, competitorId));
+  }
+
   async fetchListing(competitorId: string): Promise<FetchedListing> {
     const versions = this.fixtures[competitorId];
     if (versions === undefined) {
